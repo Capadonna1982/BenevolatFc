@@ -1,0 +1,11 @@
+{
+  "name": "benevolat-fc",
+  "version": "1.0.0",
+  "description": "Prototype de gestion du bénévolat d'une équipe de football (coachs + joueurs)",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "build": "node build.js",
+    "serve": "python3 -m http.server 61000"
+  },
+  "private": true
+}
