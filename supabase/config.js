@@ -12,8 +12,8 @@
  * Si les deux champs restent vides, l'app bascule automatiquement en mode
  * « démo hors-ligne » (localStorage), exactement comme avant.
  * ==========================================================================*/
-window.SUPABASE_URL      = "";   // ex. "https://abcdefgh.supabase.co"
-window.SUPABASE_ANON_KEY = "";   // ex. "eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+window.SUPABASE_URL      = "https://tjdzqlzthxtrmetfadmy.supabase.co";
+window.SUPABASE_ANON_KEY = "";   // ← colle ici la Publishable key (ex. "sb_publishable_..." ou "eyJhbGci...")
 
 /* --- Détection : la persistance cloud est-elle configurée ? --------------- */
 window.SUPA_ENABLED = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY);
