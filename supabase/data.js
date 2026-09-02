@@ -25,7 +25,8 @@
   /* ----------------------- Mappage SQL → JS ------------------------------- */
   const fromRow = {
     settings: r => ({ hoursGoal: Number(r.hours_goal), creditMode: r.credit_mode,
-                      withdrawHours: Number(r.withdraw_hours), logo: r.logo || null }),
+                      withdrawHours: Number(r.withdraw_hours), logo: r.logo || null,
+                      seasonName: r.season_name || '' }),
     users: r => {
       const u = { id:r.id, first:r.first, last:r.last, email:r.email, pass:r.pass,
                   role:r.role, status:r.status };
@@ -52,7 +53,7 @@
 
   /* ----------------------- Mappage JS → SQL ------------------------------- */
   const toRow = {
-    settings: o => clean({ id:1, hours_goal:o.hoursGoal, credit_mode:o.creditMode,
+    settings: o => clean({ id:1, hours_goal:o.hoursGoal, credit_mode:o.creditMode, season_name:o.seasonName||'',
                            withdraw_hours:o.withdrawHours, logo:o.logo ?? null,
                            updated_at:new Date().toISOString() }),
     users: o => clean({ id:o.id, first:o.first, last:o.last, email:o.email, pass:o.pass ?? null,
@@ -79,7 +80,7 @@
 
   // Traduction clé JS → colonne SQL (pour les mises à jour PARTIELLES, sans défauts).
   const KEYMAP = {
-    settings:  { hoursGoal:'hours_goal', creditMode:'credit_mode', withdrawHours:'withdraw_hours', logo:'logo' },
+    settings:  { hoursGoal:'hours_goal', creditMode:'credit_mode', withdrawHours:'withdraw_hours', logo:'logo', seasonName:'season_name' },
     users:     { first:'first', last:'last', email:'email', pass:'pass', role:'role',
                  category:'category', status:'status', inviteCode:'invite_code' },
     activities:{ name:'name', hours:'hours', color:'color', desc:'descr', instr:'instr', sort:'sort' },
@@ -115,7 +116,7 @@
       window.supa.from('regs').select('*')
     ]);
     const settings   = st.data ? fromRow.settings(st.data)
-                               : { hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null };
+                               : { hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null, seasonName:'' };
     const users      = (assertOk(us,'load users')      || []).map(fromRow.users);
     const activities = (assertOk(ac,'load activities') || []).map(fromRow.activities);
     const events     = (assertOk(ev,'load events')     || []).map(fromRow.events);

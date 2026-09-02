@@ -554,6 +554,19 @@ const I18N = {
     importDone:"{e} événement(s), {n} poste(s) et {a} nouvelle(s) activité(s) créés.",
     importPreviewHead:"Aperçu avant import", importPreviewEvents:"événement(s)", importPreviewNeeds:"poste(s)",
     importNewActs:"Nouvelles activités à créer :", importErrorsHead:"Lignes ignorées :", importSpots:"places",
+    seasonTitle:"Saison", seasonCurrent:"Saison en cours", seasonName:"Nom de la saison",
+    seasonNameDesc:"Affiché en haut du tableau de bord. Ex. : « Saison 2026-2027 ».",
+    seasonZone:"Nouvelle saison",
+    seasonZoneDesc:"Efface <b>tous les événements et toutes les inscriptions</b> pour repartir à zéro. Les joueurs et les types d'activités sont conservés ; les compteurs d'heures de chaque joueur reviennent à 0.",
+    seasonModalTitle:"Démarrer une nouvelle saison",
+    seasonModalWarn:"Cette action est <b>irréversible</b>. Vont être supprimés définitivement :",
+    seasonModalEvents:"événement(s)", seasonModalRegs:"inscription(s)",
+    seasonModalKeep:"Conservés : {u} joueur(s)/coach(s) et {a} type(s) d'activité.",
+    seasonNewNameLabel:"Nom de la nouvelle saison",
+    seasonConfirmType:"Pour confirmer, écrivez EFFACER ci-dessous :",
+    seasonConfirmWord:"EFFACER",
+    seasonGoBtn:"Effacer et démarrer la saison",
+    seasonDone:"Nouvelle saison démarrée : {n} événement(s) et {r} inscription(s) effacés.",
     noNeeds:"Ajoutez au moins un besoin (activité + nombre de places).",
     // rappels courriel
     reminders:"Rappels courriel", sendReminders:"Envoyer les rappels", previewReminders:"Aperçu des courriels",
@@ -701,6 +714,19 @@ const I18N = {
     importDone:"{e} event(s), {n} position(s) and {a} new activity(ies) created.",
     importPreviewHead:"Preview before import", importPreviewEvents:"event(s)", importPreviewNeeds:"position(s)",
     importNewActs:"New activities to create:", importErrorsHead:"Skipped rows:", importSpots:"spots",
+    seasonTitle:"Season", seasonCurrent:"Current season", seasonName:"Season name",
+    seasonNameDesc:"Shown at the top of the dashboard. E.g. “Season 2026-2027”.",
+    seasonZone:"New season",
+    seasonZoneDesc:"Clears <b>all events and all sign-ups</b> to start fresh. Players and activity types are kept; every player's hour counter goes back to 0.",
+    seasonModalTitle:"Start a new season",
+    seasonModalWarn:"This action is <b>irreversible</b>. The following will be permanently deleted:",
+    seasonModalEvents:"event(s)", seasonModalRegs:"sign-up(s)",
+    seasonModalKeep:"Kept: {u} player(s)/coach(es) and {a} activity type(s).",
+    seasonNewNameLabel:"New season name",
+    seasonConfirmType:"To confirm, type ERASE below:",
+    seasonConfirmWord:"ERASE",
+    seasonGoBtn:"Erase and start season",
+    seasonDone:"New season started: {n} event(s) and {r} sign-up(s) cleared.",
     noNeeds:"Add at least one need (activity + number of spots).",
     // email reminders
     reminders:"Email reminders", sendReminders:"Send reminders", previewReminders:"Email preview",
@@ -1118,7 +1144,7 @@ function seedDB(){
   // fix: r9 makes alex in two activities of same past event — remove to respect rule
   const regsClean = regs.filter(r=>r.id!=='r9');
   return {
-    settings:{ hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null },
+    settings:{ hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null, seasonName:'' },
     users, activities, events, regs:regsClean, outbox:[]
   };
 }
@@ -2126,7 +2152,7 @@ function deleteActivity(id){
 /* ---------------- COACH: Events ---------------- */
 function renderCoachEvents(c){
   c.innerHTML=`
-    <div class="page-head"><h2>${t('navEvents')}</h2><p>${t('appTagline')}</p></div>
+    <div class="page-head"><h2>${t('navEvents')}</h2><p>${DB.settings.seasonName?('🗓️ '+esc(DB.settings.seasonName)):t('appTagline')}</p></div>
     <div class="card-head" style="margin-bottom:14px">
       <div class="seg">
         <button class="${state.eventFilter==='upcoming'?'active':''}" onclick="setFilter('upcoming')">${t('upcoming')}</button>
@@ -2713,6 +2739,10 @@ function renderSettings(c){
         </div>
       </div>
       <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+      <div class="field"><label>${t('seasonName')}</label>
+        <input id="setSeason" type="text" maxlength="60" placeholder="${t('seasonCurrent')}" value="${esc(s.seasonName||'')}">
+        <div class="need-note" style="margin-top:6px">${t('seasonNameDesc')}</div></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
       <div class="field"><label>${t('hoursGoal')}</label>
         <input id="setGoal" type="number" min="0" step="0.5" value="${s.hoursGoal}"></div>
 
@@ -2732,13 +2762,80 @@ function renderSettings(c){
 
       <div style="margin-top:18px;text-align:right">
         <button class="btn btn-primary" onclick="saveSettings()">${t('save')}</button></div>
+    </div>
+
+    <div class="card" style="max-width:640px;margin-top:18px;border-color:var(--danger,#e5484d)">
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:var(--danger,#e5484d)">⚠️ ${t('seasonZone')}</div>
+      <p class="need-note" style="margin:0 0 14px">${t('seasonZoneDesc')}</p>
+      <button class="btn btn-danger" onclick="openNewSeasonModal()">${t('seasonNewBtn')||t('seasonModalTitle')}</button>
     </div>`;
 }
 function setCredit(mode){ DB.settings.creditMode=mode; saveDB(); render(); }
 function saveSettings(){
   DB.settings.hoursGoal=parseFloat(document.getElementById('setGoal').value)||0;
   DB.settings.withdrawHours=parseFloat(document.getElementById('setWd').value)||0;
+  const seasonEl=document.getElementById('setSeason');
+  if(seasonEl) DB.settings.seasonName=seasonEl.value.trim();
   saveDB(); toast(t('savedOk'),'ok'); render();
+}
+
+/* =====================================================================
+   SAISONS — démarrer une nouvelle saison (efface événements + inscriptions)
+   ===================================================================== */
+function openNewSeasonModal(){
+  const nEvents=DB.events.length, nRegs=DB.regs.length;
+  const nUsers=DB.users.length, nActs=DB.activities.length;
+  const suggested = suggestNextSeasonName(DB.settings.seasonName);
+  modal(t('seasonModalTitle'), `
+    <p style="font-size:14px;margin:0 0 10px">${t('seasonModalWarn')}</p>
+    <ul style="margin:0 0 14px;padding-left:20px;font-size:14px">
+      <li><b>${nEvents}</b> ${t('seasonModalEvents')}</li>
+      <li><b>${nRegs}</b> ${t('seasonModalRegs')}</li>
+    </ul>
+    <div class="need-note" style="margin-bottom:16px">${t('seasonModalKeep').replace('{u}',nUsers).replace('{a}',nActs)}</div>
+    <div class="field"><label>${t('seasonNewNameLabel')}</label>
+      <input id="newSeasonName" type="text" maxlength="60" placeholder="${t('seasonCurrent')}" value="${esc(suggested)}"></div>
+    <div class="field" style="margin-top:12px"><label>${t('seasonConfirmType')}</label>
+      <input id="seasonConfirm" type="text" autocomplete="off" oninput="onSeasonConfirmInput()" placeholder="${t('seasonConfirmWord')}"></div>`,
+    [{label:t('cancel'),cls:'btn-ghost',fn:closeModal},
+     {label:t('seasonGoBtn'),cls:'btn-danger',fn:startNewSeason}]);
+  // Désactive le bouton d'action tant que le mot de confirmation n'est pas saisi
+  setTimeout(function(){
+    const foot=document.getElementById('modalFoot');
+    if(foot){ const go=foot.querySelectorAll('button')[1]; if(go){ go.id='seasonGoBtn'; go.disabled=true; go.style.opacity=.5; go.style.cursor='not-allowed'; } }
+  },0);
+}
+function onSeasonConfirmInput(){
+  const inp=document.getElementById('seasonConfirm');
+  const go=document.getElementById('seasonGoBtn');
+  if(!inp||!go) return;
+  const ok=inp.value.trim().toUpperCase()===t('seasonConfirmWord');
+  go.disabled=!ok; go.style.opacity=ok?1:.5; go.style.cursor=ok?'pointer':'not-allowed';
+}
+// Propose « Saison 2026-2027 » → « Saison 2027-2028 » ; sinon déduit de l'année courante
+function suggestNextSeasonName(current){
+  if(current){
+    const m=String(current).match(/(\d{4})\s*[-–/]\s*(\d{4})/);
+    if(m){ return String(current).replace(m[0], (parseInt(m[1],10)+1)+'-'+(parseInt(m[2],10)+1)); }
+  }
+  const y=new Date().getFullYear();
+  return (t('seasonCurrent')+' '+y+'-'+(y+1));
+}
+function startNewSeason(){
+  const inp=document.getElementById('seasonConfirm');
+  if(!inp || inp.value.trim().toUpperCase()!==t('seasonConfirmWord')) return; // garde-fou
+  const nameEl=document.getElementById('newSeasonName');
+  const newName=nameEl? nameEl.value.trim() : '';
+  const nEvents=DB.events.length, nRegs=DB.regs.length;
+  LOG.exec('season:new', function(){
+    DB.events=[]; DB.regs=[]; DB.outbox=[];
+    if(newName) DB.settings.seasonName=newName;
+    saveDB();
+  });
+  LOG.event('Nouvelle saison démarrée',{saison:newName||null, événementsEffacés:nEvents, inscriptionsEffacées:nRegs});
+  closeModal();
+  toast(t('seasonDone').replace('{n}',nEvents).replace('{r}',nRegs),'ok');
+  go('events');
 }
 
 /* =====================================================================

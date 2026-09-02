@@ -35,6 +35,7 @@ create table settings (
   credit_mode   text    not null default 'approval',   -- 'approval' | 'auto'
   withdraw_hours numeric not null default 48,
   logo          text,                                  -- data URL ou null
+  season_name   text    not null default '',            -- nom de la saison en cours (ex. « Saison 2026-2027 »)
   updated_at    timestamptz not null default now()
 );
 

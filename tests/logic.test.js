@@ -566,6 +566,37 @@ check('postes importés ont des ids n_', imp.needs.every(n=>/^n_/.test(n.id)));
 check('poste lié à une activité existante', imp.needs.every(n=>getDB().activities.some(a=>a.id===n.actId)));
 
 /* --------------------------------------------------------------- */
+section('14. Principe de saison (réinitialisation)');
+reset();
+run("toast=function(){}; render=function(){}; go=function(){};");
+// État de départ : il y a des événements et des inscriptions
+check('des événements existent avant réinitialisation', getDB().events.length>0);
+check('des inscriptions existent avant réinitialisation', getDB().regs.length>0);
+let seasonUsersBefore=getDB().users.length, seasonActsBefore=getDB().activities.length;
+// Simule la saisie du mot de confirmation + nouveau nom, puis lance la réinitialisation
+run("document.getElementById=function(id){ if(id==='seasonConfirm') return {value:'EFFACER'}; if(id==='newSeasonName') return {value:'Saison 2027-2028'}; return {value:''}; };");
+run("startNewSeason();");
+eq('événements effacés', getDB().events.length, 0);
+eq('inscriptions effacées', getDB().regs.length, 0);
+eq('outbox vidé', getDB().outbox.length, 0);
+eq('joueurs/coachs conservés', getDB().users.length, seasonUsersBefore);
+eq('types d\'activité conservés', getDB().activities.length, seasonActsBefore);
+eq('nom de saison enregistré', getDB().settings.seasonName, 'Saison 2027-2028');
+// Les heures dérivent des regs -> tout le monde revient à 0
+let anyHours=getDB().users.filter(u=>u.role==='player').some(u=>sb.playerHours(u.id)>0);
+check('toutes les heures des joueurs sont à 0 après réinitialisation', anyHours===false);
+// Garde-fou : sans le mot de confirmation, rien ne se passe
+reset();
+run("toast=function(){}; render=function(){}; go=function(){};");
+let seasonEvCount=getDB().events.length;
+run("document.getElementById=function(id){ if(id==='seasonConfirm') return {value:'oui'}; return {value:''}; };");
+run("startNewSeason();");
+eq('garde-fou : sans EFFACER, les événements restent', getDB().events.length, seasonEvCount);
+// suggestNextSeasonName : incrémente les années d'une plage
+eq('suggestion incrémente la plage d\'années', sb.suggestNextSeasonName('Saison 2026-2027'), 'Saison 2027-2028');
+check('suggestion par défaut contient une plage d\'années', /\d{4}-\d{4}/.test(sb.suggestNextSeasonName('')));
+
+/* --------------------------------------------------------------- */
 console.log('\n' + '─'.repeat(50));
 if(failed===0){
   console.log(`\x1b[32m\x1b[1m✓ TOUS LES TESTS PASSENT — ${passed}/${passed} assertions\x1b[0m`);
