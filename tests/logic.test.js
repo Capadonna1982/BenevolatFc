@@ -520,6 +520,52 @@ run("clearOutbox();");
 check('clearOutbox vide la boîte d\'envoi', run("DB.outbox.length") === 0);
 
 /* --------------------------------------------------------------- */
+section('13. Import d\'événements depuis un tableur (CSV/TSV/collé)');
+reset();
+// Regroupement: 2 lignes même date+titre -> 1 événement, 2 postes
+let p1 = sb.parseEventSheet('2026-09-20 14:00,Partie 2,Stade,,Chaîneur,2,\n2026-09-20 14:00,Partie 2,Stade,,Cantine,3,', getDB().activities);
+eq('1 événement regroupé par date+titre', p1.events.length, 1);
+eq('2 postes dans l\'événement', p1.events[0].needs.length, 2);
+eq('les places sont lues (Chaîneur=2)', p1.events[0].needs[0].qty, 2);
+eq('le lieu est repris', p1.events[0].location, 'Stade');
+// En-tête détectée et ignorée
+let p2 = sb.parseEventSheet('Date,Titre,Lieu,Catégorie,Activité,Places,Heures\n2026-10-01 10:00,Pratique,Gymnase,,Cantine,1,', getDB().activities);
+eq('ligne d\'en-tête ignorée', p2.events.length, 1);
+eq('titre correctement lu après en-tête', p2.events[0].title, 'Pratique');
+// Activité connue (accents/casse) appariée, pas marquée comme nouvelle
+let p3 = sb.parseEventSheet('2026-09-20 14:00,Partie 2,Stade,,CHAINEUR,2,', getDB().activities);
+eq('activité existante appariée sans accent/casse -> 0 nouvelle', p3.newActs.length, 0);
+// Activité inconnue -> proposée à la création
+let p4 = sb.parseEventSheet('2026-09-20 14:00,Partie 2,Stade,,Vestiaire,1,', getDB().activities);
+eq('activité inconnue détectée', p4.newActs.length, 1);
+eq('nom de la nouvelle activité', p4.newActs[0], 'Vestiaire');
+// Lignes invalides -> erreurs, pas d'événement
+let p5 = sb.parseEventSheet('pas-de-date,Partie,Stade,,Cantine,2,\n2026-09-20 14:00,,Stade,,Cantine,2,\n2026-09-20 14:00,Sans activité,Stade,,,2,', getDB().activities);
+eq('3 lignes invalides capturées', p5.errors.length, 3);
+eq('aucun événement créé depuis lignes invalides', p5.events.length, 0);
+// Détection séparateur point-virgule (Excel FR) + date JJ/MM/AAAA
+let p6 = sb.parseEventSheet('20/09/2026 14:00;Partie 3;Stade;;Cantine;4;', getDB().activities);
+eq('séparateur ; détecté -> 1 événement', p6.events.length, 1);
+eq('date JJ/MM/AAAA analysée (place=4)', p6.events[0].needs[0].qty, 4);
+check('date JJ/MM/AAAA -> ISO septembre 2026', /^2026-09-20/.test(p6.events[0].date));
+// Places manquante -> 1 par défaut ; heures lues
+let p7 = sb.parseEventSheet('2026-09-20 14:00,Partie 4,Stade,,Cantine,,2.5', getDB().activities);
+eq('places vide -> 1 par défaut', p7.events[0].needs[0].qty, 1);
+eq('heures personnalisées lues', p7.events[0].needs[0].hours, 2.5);
+// doImportEvents applique réellement au DB
+reset();
+run("toast=function(){}; render=function(){};");
+let evBefore = getDB().events.length, actBefore = getDB().activities.length;
+run("_importPlan = parseEventSheet('2026-11-15 09:00,Tournoi,Complexe,,Chaîneur,2,\\n2026-11-15 09:00,Tournoi,Complexe,,Buvette,3,', DB.activities); doImportEvents();");
+eq('doImportEvents crée 1 nouvel événement', getDB().events.length, evBefore+1);
+eq('doImportEvents crée l\'activité manquante (Buvette)', getDB().activities.length, actBefore+1);
+let imp = getDB().events.find(e=>e.title==='Tournoi');
+check('événement importé a un id e_', !!imp && /^e_/.test(imp.id));
+eq('événement importé a 2 postes', imp.needs.length, 2);
+check('postes importés ont des ids n_', imp.needs.every(n=>/^n_/.test(n.id)));
+check('poste lié à une activité existante', imp.needs.every(n=>getDB().activities.some(a=>a.id===n.actId)));
+
+/* --------------------------------------------------------------- */
 console.log('\n' + '─'.repeat(50));
 if(failed===0){
   console.log(`\x1b[32m\x1b[1m✓ TOUS LES TESTS PASSENT — ${passed}/${passed} assertions\x1b[0m`);

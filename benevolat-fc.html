@@ -543,6 +543,17 @@ const I18N = {
     editEvent:"Modifier l'événement", deleteEvent:"Supprimer",
     copyEvent:"Copier", copyEventTitle:"Copier l'événement", copySuffix:" (copie)",
     copyEventHint:"Les activités et le nombre de places sont copiés. Aucun joueur n'est assigné. Ajustez le nom, la date et les infos.",
+    importBtn:"Importer", importTitle:"Importer des événements",
+    importHelp:"Créez plusieurs événements d'un coup à partir d'un fichier tableur. <b>Une ligne = un poste.</b> Les lignes ayant la même date et le même titre sont regroupées dans un seul événement. Colonnes : <code>Date, Titre, Lieu, Catégorie, Activité, Places, Heures</code>. Une activité inconnue est créée automatiquement (2 h par défaut, modifiable ensuite).",
+    importTemplate:"1. Partez d'un modèle", importDownloadTpl:"Télécharger le modèle CSV",
+    importFile:"2. Choisissez un fichier (CSV, TSV ou texte)",
+    importPaste:"…ou collez directement les cellules (depuis Excel, Google Sheets)",
+    importPastePh:"Date,Titre,Lieu,Catégorie,Activité,Places,Heures\n2026-09-20 14:00,Partie 2,Stade Municipal,,Chaîneur,2,\n2026-09-20 14:00,Partie 2,Stade Municipal,,Cantine,3,",
+    importXlsxWarn:"Les fichiers .xlsx/.xls ne sont pas lus directement. Dans Excel : Fichier ▸ Enregistrer sous ▸ CSV — ou copiez-collez les cellules dans la zone ci-dessous.",
+    importDoBtn:"Importer les événements", importNothing:"Aucun événement valide à importer. Vérifiez la date, le titre et l'activité.",
+    importDone:"{e} événement(s), {n} poste(s) et {a} nouvelle(s) activité(s) créés.",
+    importPreviewHead:"Aperçu avant import", importPreviewEvents:"événement(s)", importPreviewNeeds:"poste(s)",
+    importNewActs:"Nouvelles activités à créer :", importErrorsHead:"Lignes ignorées :", importSpots:"places",
     noNeeds:"Ajoutez au moins un besoin (activité + nombre de places).",
     // rappels courriel
     reminders:"Rappels courriel", sendReminders:"Envoyer les rappels", previewReminders:"Aperçu des courriels",
@@ -679,6 +690,17 @@ const I18N = {
     editEvent:"Edit event", deleteEvent:"Delete",
     copyEvent:"Copy", copyEventTitle:"Copy event", copySuffix:" (copy)",
     copyEventHint:"Activities and number of spots are copied. No player is assigned. Adjust the name, date and info.",
+    importBtn:"Import", importTitle:"Import events",
+    importHelp:"Create several events at once from a spreadsheet file. <b>One row = one position.</b> Rows with the same date and title are grouped into a single event. Columns: <code>Date, Title, Location, Category, Activity, Spots, Hours</code>. An unknown activity is created automatically (2h default, editable later).",
+    importTemplate:"1. Start from a template", importDownloadTpl:"Download CSV template",
+    importFile:"2. Choose a file (CSV, TSV or text)",
+    importPaste:"…or paste cells directly (from Excel, Google Sheets)",
+    importPastePh:"Date,Title,Location,Category,Activity,Spots,Hours\n2026-09-20 14:00,Game 2,City Stadium,,Chain crew,2,\n2026-09-20 14:00,Game 2,City Stadium,,Canteen,3,",
+    importXlsxWarn:".xlsx/.xls files are not read directly. In Excel: File ▸ Save As ▸ CSV — or copy-paste the cells into the box below.",
+    importDoBtn:"Import events", importNothing:"No valid event to import. Check the date, title and activity.",
+    importDone:"{e} event(s), {n} position(s) and {a} new activity(ies) created.",
+    importPreviewHead:"Preview before import", importPreviewEvents:"event(s)", importPreviewNeeds:"position(s)",
+    importNewActs:"New activities to create:", importErrorsHead:"Skipped rows:", importSpots:"spots",
     noNeeds:"Add at least one need (activity + number of spots).",
     // email reminders
     reminders:"Email reminders", sendReminders:"Send reminders", previewReminders:"Email preview",
@@ -746,7 +768,16 @@ function catLabel(v){ return v ? t('cat_'+v) : t('catNotSet'); }
 const DB_KEY = 'bfc_db_v3';
 let DB = null;
 
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
+function saveDB(){
+  localStorage.setItem(DB_KEY, JSON.stringify(DB));
+  // Miroir vers Supabase si configuré (anti-rebond pour regrouper les rafales d'écritures).
+  if(window.Data && window.Data.enabled && !window.__supaApplying){
+    clearTimeout(window.__supaPushTimer);
+    window.__supaPushTimer = setTimeout(function(){
+      window.Data.pushAll(DB).catch(function(e){ if(window.LOG) LOG.error('Supabase pushAll', {err:String(e)}); });
+    }, 400);
+  }
+}
 function loadDB(){
   const raw = localStorage.getItem(DB_KEY);
   if(raw){ try{ DB = JSON.parse(raw); if(!Array.isArray(DB.outbox)) DB.outbox=[]; return; }catch(e){} }
@@ -1474,7 +1505,42 @@ function enterApp(){
 window.addEventListener('DOMContentLoaded',()=>{
   applyDevFromHash();
   LOG.info('Démarrage de l\'application',{lang:lang, ts:nowISO(), dev:isDev()});
-  loadDB();
+  bootData().then(finishBoot).catch(function(e){
+    if(window.LOG) LOG.error('Boot Supabase — repli localStorage',{err:String(e)});
+    loadDB(); finishBoot();
+  });
+});
+
+// Charge l'état initial : depuis Supabase si configuré (en semant la base si elle est vide),
+// sinon depuis localStorage. Branche aussi le temps réel.
+async function bootData(){
+  if(!(window.Data && window.Data.enabled)){ loadDB(); return; }
+  LOG.info('Supabase configuré — chargement cloud');
+  let cloud = await window.Data.loadAll();
+  // Base vide ? On sème les données de démo puis on les pousse une fois.
+  if(!cloud.users || cloud.users.length === 0){
+    LOG.info('Base cloud vide — initialisation avec les données de démo');
+    DB = seedDB();
+    await window.Data.pushAll(DB);
+  } else {
+    DB = cloud; if(!Array.isArray(DB.outbox)) DB.outbox = [];
+  }
+  // Temps réel : à chaque changement distant, on recharge et on re-rend.
+  window.Data.subscribe(function(){
+    if(window.__supaReloadTimer) clearTimeout(window.__supaReloadTimer);
+    window.__supaReloadTimer = setTimeout(async function(){
+      try{
+        window.__supaApplying = true;      // évite de re-pousser ce qu'on vient de recevoir
+        const fresh = await window.Data.loadAll();
+        if(fresh.users && fresh.users.length){ fresh.outbox = DB.outbox || []; DB = fresh; }
+        localStorage.setItem(DB_KEY, JSON.stringify(DB));
+        if(SESSION && SESSION.userId) render();
+      } finally { window.__supaApplying = false; }
+    }, 150);
+  });
+}
+
+function finishBoot(){
   setLang(lang);
   applyBranding();
   // Raccourci développeur : Ctrl+Shift+D bascule le mode dév
@@ -1483,7 +1549,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(sid && DB.users.find(u=>u.id===sid)){ SESSION={userId:sid}; LOG.info('Session restaurée',{userId:sid}); enterApp(); return; }
   // Auto-remplissage depuis un lien d'invitation : #invite=inv_xxx&email=...
   maybePrefillFromInviteHash();
-});
+}
 // Lit le hash/URL d'invitation et pré-remplit l'onglet « Activer un compte ».
 function maybePrefillFromInviteHash(){
   let raw='';
@@ -2066,7 +2132,10 @@ function renderCoachEvents(c){
         <button class="${state.eventFilter==='upcoming'?'active':''}" onclick="setFilter('upcoming')">${t('upcoming')}</button>
         <button class="${state.eventFilter==='past'?'active':''}" onclick="setFilter('past')">${t('past')}</button>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="openEventModal()">+ ${t('createEvent')}</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="openImportModal()">⬆ ${t('importBtn')}</button>
+        <button class="btn btn-primary btn-sm" onclick="openEventModal()">+ ${t('createEvent')}</button>
+      </div>
     </div>
     <div id="eventList"></div>`;
   renderEventList(document.getElementById('eventList'), true);
@@ -2164,6 +2233,169 @@ function deleteEvent(id){
     LOG.event('Événement supprimé',{id:id, title:e&&e.title, inscriptionsSupprimées:regs});
     saveDB(); closeModal(); toast(t('deletedOk')); render();
   });
+}
+
+/* ---------------- COACH: Import d'événements (tableur) ---------------- */
+// Normalisation accent-insensible pour apparier les noms d'activités
+function normKey(s){ return String(s||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+// Détecte le séparateur le plus probable d'une ligne (tab, point-virgule, virgule)
+function detectDelim(line){
+  if(line.indexOf('\t')>=0) return '\t';
+  if(line.indexOf(';')>=0 && line.indexOf(',')<0) return ';';
+  if(line.indexOf(';')>=0 && line.split(';').length>line.split(',').length) return ';';
+  return ',';
+}
+// Découpe une ligne CSV en respectant les guillemets
+function splitCsvLine(line,d){
+  const out=[]; let cur=''; let q=false;
+  for(let i=0;i<line.length;i++){ const ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else { if(ch==='"') q=true; else if(ch===d){ out.push(cur); cur=''; } else cur+=ch; }
+  }
+  out.push(cur); return out.map(s=>s.trim());
+}
+// Analyse une date souple : ISO, "YYYY-MM-DD HH:mm", "JJ/MM/AAAA HH:mm". Retourne ISO ou null.
+function parseFlexDate(s){
+  s=String(s||'').trim(); if(!s) return null;
+  let m;
+  // JJ/MM/AAAA [HH:mm]
+  if((m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/))){
+    const d=new Date(+m[3],+m[2]-1,+m[1],m[4]?+m[4]:0,m[5]?+m[5]:0);
+    return isNaN(d)?null:d.toISOString();
+  }
+  // AAAA-MM-JJ [HH:mm]  (accepte T ou espace)
+  if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/))){
+    const d=new Date(+m[1],+m[2]-1,+m[3],m[4]?+m[4]:0,m[5]?+m[5]:0);
+    return isNaN(d)?null:d.toISOString();
+  }
+  const d=new Date(s); return isNaN(d)?null:d.toISOString();
+}
+// Reconnaît une ligne d'en-tête (contient des mots-clés connus, pas de date)
+function looksLikeHeader(cells){
+  const joined=normKey(cells.join(' '));
+  const kw=['date','titre','title','activite','activity','places','spots','lieu','location','heures','hours','categorie','category'];
+  const hits=kw.filter(k=>joined.indexOf(k)>=0).length;
+  return hits>=2 && !parseFlexDate(cells[0]);
+}
+// PARSEUR PRINCIPAL (pur) : texte tableur -> plan d'import.
+// Colonnes: Date, Titre, Lieu, Catégorie, Activité, Places, Heures
+// Retour: {events:[{key,title,date,location,category,needs:[{actName,qty,hours}]}], newActs:[names], errors:[{line,reason}]}
+function parseEventSheet(text, activities){
+  activities = activities || (typeof DB!=='undefined'? DB.activities : []);
+  const actByKey={}; (activities||[]).forEach(a=>{ actByKey[normKey(a.name)]=a; });
+  const rawLines=String(text||'').split(/\r?\n/).filter(l=>l.trim()!=='');
+  const events=[]; const evByKey={}; const newActKeys={}; const newActs=[]; const errors=[];
+  if(!rawLines.length) return {events,newActs,errors};
+  const delim=detectDelim(rawLines[0]);
+  let start=0;
+  const first=splitCsvLine(rawLines[0],delim);
+  if(looksLikeHeader(first)) start=1;
+  for(let i=start;i<rawLines.length;i++){
+    const lineNo=i+1;
+    const c=splitCsvLine(rawLines[i],delim);
+    const dateRaw=c[0]||'', title=(c[1]||'').trim(), loc=(c[2]||'').trim();
+    const cat=(c[3]||'').trim(), actName=(c[4]||'').trim();
+    const qtyRaw=(c[5]||'').trim(), hoursRaw=(c[6]||'').trim();
+    const iso=parseFlexDate(dateRaw);
+    if(!iso){ errors.push({line:lineNo, reason:'date'}); continue; }
+    if(!title){ errors.push({line:lineNo, reason:'titre'}); continue; }
+    if(!actName){ errors.push({line:lineNo, reason:'activite'}); continue; }
+    let qty=parseInt(qtyRaw,10); if(!(qty>0)) qty=1;
+    let hours = hoursRaw===''? null : parseFloat(hoursRaw.replace(',','.'));
+    if(hours!=null && (isNaN(hours)||hours<0)) hours=null;
+    const ak=normKey(actName);
+    if(!actByKey[ak] && !newActKeys[ak]){ newActKeys[ak]=true; newActs.push(actName); }
+    const evKey=iso+'||'+normKey(title);
+    let ev=evByKey[evKey];
+    if(!ev){ ev={key:evKey,title,date:iso,location:loc,category:cat||'',needs:[]}; evByKey[evKey]=ev; events.push(ev); }
+    else { if(!ev.location&&loc) ev.location=loc; if(!ev.category&&cat) ev.category=cat; }
+    // fusionne les postes identiques (même activité) d'un même événement
+    const same=ev.needs.find(n=>normKey(n.actName)===ak && (n.hours===hours));
+    if(same) same.qty+=qty; else ev.needs.push({actName,qty,hours});
+  }
+  return {events,newActs,errors};
+}
+
+let _importPlan=null; // dernier résultat de parseEventSheet
+function eventTemplateCSV(){
+  return t('importPastePh');
+}
+function downloadEventTemplate(){
+  const csv=eventTemplateCSV();
+  const blob=new Blob(["\ufeff"+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='modele-evenements.csv'; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function openImportModal(){
+  _importPlan=null;
+  modal(t('importTitle'), `
+    <div class="need-note" style="margin-bottom:12px">${t('importHelp')}</div>
+    <div class="field"><label>${t('importTemplate')}</label>
+      <button class="btn btn-ghost btn-sm" onclick="downloadEventTemplate()">⬇ ${t('importDownloadTpl')}</button></div>
+    <div class="field"><label>${t('importFile')}</label>
+      <input id="impFile" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" onchange="handleImportFile(this)">
+      <div class="need-note" style="margin-top:4px">${t('importXlsxWarn')}</div></div>
+    <div class="field"><label>${t('importPaste')}</label>
+      <textarea id="impText" rows="6" placeholder="${esc(t('importPastePh'))}" oninput="refreshImportPreview()"></textarea></div>
+    <div id="impPreview"></div>`,
+    [{label:t('cancel'),cls:'btn-ghost',fn:closeModal},
+     {label:t('importDoBtn'),cls:'btn-primary',fn:doImportEvents}]);
+}
+function handleImportFile(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const nm=(f.name||'').toLowerCase();
+  if(nm.endsWith('.xlsx')||nm.endsWith('.xls')){ toast(t('importXlsxWarn'),'err'); input.value=''; return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ const ta=document.getElementById('impText'); if(ta){ ta.value=rd.result; refreshImportPreview(); } };
+  rd.readAsText(f);
+}
+function refreshImportPreview(){
+  const ta=document.getElementById('impText'); const host=document.getElementById('impPreview');
+  if(!ta||!host) return;
+  const plan=parseEventSheet(ta.value, DB.activities); _importPlan=plan;
+  if(!ta.value.trim()){ host.innerHTML=''; return; }
+  const totalNeeds=plan.events.reduce((s,e)=>s+e.needs.length,0);
+  let html=`<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+    <div style="font-weight:700;margin-bottom:8px">${t('importPreviewHead')} — <span style="color:var(--green)">${plan.events.length}</span> ${t('importPreviewEvents')}, <span style="color:var(--green)">${totalNeeds}</span> ${t('importPreviewNeeds')}</div>`;
+  if(plan.newActs.length){ html+=`<div class="need-note" style="background:var(--amber-light);color:#92400e;padding:6px 10px;border-radius:8px;margin-bottom:8px">${t('importNewActs')} ${plan.newActs.map(esc).join(', ')}</div>`; }
+  html+=plan.events.map(e=>{
+    const d=new Date(e.date); const ds=isNaN(d)?e.date:d.toLocaleString();
+    return `<div class="need-chip need-chip-col" style="margin-bottom:6px">
+      <div class="need-chip-row"><span class="t"><b>${esc(e.title)}</b> — ${esc(ds)}${e.location?' · '+esc(e.location):''}${e.category?' · '+esc(e.category):''}</span></div>
+      <div style="font-size:12px;color:var(--muted);padding-left:2px">${e.needs.map(n=>esc(n.actName)+' ×'+n.qty+(n.hours!=null?' ('+n.hours+t('hoursShort')+')':'')).join(' · ')}</div>
+    </div>`;
+  }).join('');
+  if(plan.errors.length){ html+=`<div class="need-note" style="color:var(--red);margin-top:6px">${t('importErrorsHead')} ${plan.errors.map(e=>'#'+e.line+' ('+e.reason+')').join(', ')}</div>`; }
+  html+='</div>';
+  host.innerHTML=html;
+}
+function doImportEvents(){
+  const ta=document.getElementById('impText');
+  const plan = _importPlan || (ta? parseEventSheet(ta.value, DB.activities) : null);
+  if(!plan || !plan.events.length){ toast(t('importNothing'),'err'); return; }
+  // 1) créer les activités manquantes
+  const actByKey={}; DB.activities.forEach(a=>{ actByKey[normKey(a.name)]=a; });
+  let createdActs=0;
+  plan.newActs.forEach((name,idx)=>{
+    const k=normKey(name); if(actByKey[k]) return;
+    const color=COLORS[(DB.activities.length+idx)%COLORS.length];
+    const na={id:uid('a_'),name:name,hours:2,color:color,desc:'',instr:''};
+    DB.activities.push(na); actByKey[k]=na; createdActs++;
+    LOG.event('Type d\'activité créé',{id:na.id, name:name, hours:2, viaImport:true});
+  });
+  // 2) créer les événements + postes
+  let createdEvents=0, createdNeeds=0;
+  plan.events.forEach(e=>{
+    const needs=e.needs.map(n=>{ const a=actByKey[normKey(n.actName)];
+      return {id:uid('n_'), actId:a.id, qty:n.qty, hours:(n.hours!=null?n.hours:null), instr:(a.instr||'')}; });
+    const ne={id:uid('e_'), title:e.title, date:e.date, location:e.location||'', needs:needs, category:e.category||null};
+    DB.events.push(ne); createdEvents++; createdNeeds+=needs.length;
+    LOG.event('Événement créé',{id:ne.id, title:e.title, date:e.date, category:ne.category, postes:needs.length, placesTotal:needs.reduce((s,n)=>s+n.qty,0), viaImport:true});
+  });
+  _importPlan=null; saveDB(); closeModal();
+  toast(t('importDone').replace('{e}',createdEvents).replace('{n}',createdNeeds).replace('{a}',createdActs),'ok');
+  render();
 }
 
 /* ---------------- COACH: Tracking + presence ---------------- */

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guide de déploiement — Bénévolat FC</title>
+<style>
+  :root{
+    --supa:#3ecf8e; --supa-dark:#249361; --vercel:#000; --ink:#1a1f2e;
+    --muted:#5b6478; --line:#e3e7ef; --bg:#f4f6fb; --card:#fff;
+    --blue:#2f6df6; --amber:#f5a623; --amber-bg:#fff8ec; --red:#e5484d;
+    --code-bg:#0f1729; --code-ink:#d6e2ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:840px;margin:0 auto;padding:0 20px 80px}
+
+  /* Header */
+  header{background:linear-gradient(135deg,#1a1f2e 0%,#2b3450 100%);color:#fff;
+    padding:48px 20px 40px;text-align:center;margin-bottom:36px}
+  header .badge{display:inline-block;background:rgba(62,207,142,.18);
+    color:#8ff0c0;border:1px solid rgba(62,207,142,.4);border-radius:999px;
+    padding:5px 15px;font-size:13px;font-weight:600;letter-spacing:.3px;margin-bottom:16px}
+  header h1{font-size:30px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
+  header p{color:#b6c0d8;font-size:16px;max-width:560px;margin:0 auto}
+  header .meta{margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  header .meta span{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+    padding:6px 14px;border-radius:8px;font-size:13px;color:#dbe2f2}
+
+  /* Overview steps */
+  .overview{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:44px}
+  .ov{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px;text-align:center;position:relative}
+  .ov .n{width:34px;height:34px;border-radius:50%;background:var(--ink);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto 10px;font-size:16px}
+  .ov h4{font-size:15px;margin-bottom:4px}
+  .ov p{font-size:13px;color:var(--muted)}
+  .ov .tag{position:absolute;top:10px;right:10px;font-size:10px;font-weight:700;
+    padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.4px}
+  .tag.supa{background:#e4f9ef;color:var(--supa-dark)}
+  .tag.verc{background:#eef0f4;color:#111}
+
+  /* Section cards */
+  .step{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:0;margin-bottom:32px;overflow:hidden;box-shadow:0 1px 3px rgba(20,30,60,.05)}
+  .step-head{display:flex;align-items:center;gap:16px;padding:22px 26px;border-bottom:1px solid var(--line)}
+  .step-head .circle{flex:none;width:46px;height:46px;border-radius:12px;display:flex;
+    align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff}
+  .c-supa{background:linear-gradient(135deg,#3ecf8e,#249361)}
+  .c-verc{background:linear-gradient(135deg,#333,#000)}
+  .c-test{background:linear-gradient(135deg,#2f6df6,#1a4fd0)}
+  .step-head h2{font-size:20px;font-weight:700}
+  .step-head .sub{font-size:13px;color:var(--muted);font-weight:500}
+  .step-body{padding:24px 26px}
+
+  ol.tasks{list-style:none;counter-reset:t}
+  ol.tasks>li{counter-increment:t;position:relative;padding:0 0 22px 42px;margin-bottom:0}
+  ol.tasks>li::before{content:counter(t);position:absolute;left:0;top:-2px;width:28px;height:28px;
+    border-radius:50%;background:var(--bg);border:2px solid var(--line);color:var(--ink);
+    font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  ol.tasks>li:not(:last-child)::after{content:"";position:absolute;left:13px;top:28px;bottom:2px;
+    width:2px;background:var(--line)}
+  ol.tasks>li h3{font-size:16px;margin-bottom:6px;font-weight:650}
+  ol.tasks>li p{font-size:14.5px;color:#3b4560;margin-bottom:10px}
+  ol.tasks>li p:last-child{margin-bottom:0}
+
+  /* Mockups */
+  .mock{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:14px 0;
+    box-shadow:0 4px 14px rgba(20,30,60,.08);font-size:13px}
+  .mock .bar{background:#1c2333;padding:9px 14px;display:flex;align-items:center;gap:7px}
+  .mock .bar .dot{width:11px;height:11px;border-radius:50%}
+  .mock .bar .u{margin-left:12px;background:#2d3752;color:#9fb0d4;border-radius:6px;
+    padding:3px 12px;font-size:11px;flex:1;max-width:360px}
+  .mock .screen{background:#fbfcfe;padding:0;display:flex;min-height:150px}
+  .mock .sidebar{width:150px;background:#f5f7fb;border-right:1px solid var(--line);padding:12px 0}
+  .mock .sidebar .logo{display:flex;align-items:center;gap:7px;padding:0 14px 12px;font-weight:800;font-size:13px}
+  .mock .sidebar .logo .sq{width:18px;height:18px;border-radius:5px;background:var(--supa)}
+  .mock .sidebar a{display:block;padding:6px 14px;color:#5b6478;font-size:12.5px;text-decoration:none}
+  .mock .sidebar a.on{background:#e4f9ef;color:var(--supa-dark);font-weight:650;border-left:3px solid var(--supa)}
+  .mock .content{flex:1;padding:16px 18px}
+  .mock .content h5{font-size:14px;margin-bottom:12px;font-weight:700}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}
+  .field .inp{background:#fff;border:1px solid var(--line);border-radius:7px;padding:8px 11px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--ink);
+    display:flex;align-items:center;justify-content:space-between}
+  .field .inp .copy{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:2px 8px;font-size:10px;color:var(--muted);font-family:inherit}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;
+    font-weight:650;font-size:13px;border:none;cursor:default}
+  .btn-green{background:var(--supa);color:#03291b}
+  .btn-dark{background:#000;color:#fff}
+  .btn-blue{background:var(--blue);color:#fff}
+  .cursor{display:inline-block;margin-left:6px;font-size:15px;transform:translateY(1px)}
+
+  /* SQL editor mock */
+  .sqlbox{background:var(--code-bg);border-radius:10px;overflow:hidden;margin:8px 0}
+  .sqlbox .top{background:#1a2438;padding:7px 12px;font-size:11px;color:#8fa6d4;display:flex;justify-content:space-between;align-items:center}
+  .sqlbox pre{padding:12px 14px;color:var(--code-ink);font-family:ui-monospace,Menlo,monospace;
+    font-size:11.5px;line-height:1.6;overflow-x:auto;white-space:pre}
+  .sqlbox .kw{color:#ff9d6f} .sqlbox .cm{color:#5f7396}
+
+  /* Code / file boxes */
+  .filebox{background:var(--code-bg);border-radius:10px;overflow:hidden;margin:12px 0}
+  .filebox .fname{background:#1a2438;padding:8px 14px;font-size:12px;color:#9fb0d4;
+    font-family:ui-monospace,Menlo,monospace;display:flex;align-items:center;gap:8px}
+  .filebox .fname::before{content:"📄"}
+  .filebox pre{padding:14px;color:var(--code-ink);font-family:ui-monospace,Menlo,monospace;
+    font-size:12.5px;line-height:1.7;overflow-x:auto;white-space:pre}
+  .filebox .hl{background:rgba(245,166,35,.16);display:block;margin:0 -14px;padding:0 14px;border-left:3px solid var(--amber)}
+  .filebox .str{color:#7ee0a8} .filebox .cm2{color:#5f7396} .filebox .var{color:#8fb8ff}
+
+  /* Callouts */
+  .note{border-radius:10px;padding:13px 16px;font-size:13.5px;margin:14px 0;display:flex;gap:11px;align-items:flex-start}
+  .note .ic{flex:none;font-size:17px;line-height:1.3}
+  .note.tip{background:#eef5ff;border:1px solid #cfe0ff;color:#1c3f80}
+  .note.warn{background:var(--amber-bg);border:1px solid #f3d79b;color:#8a5a0b}
+  .note.ok{background:#e9f9f0;border:1px solid #b8eccf;color:#1a6b42}
+  .note b{font-weight:700}
+
+  .kbd{font-family:ui-monospace,Menlo,monospace;background:#eef0f4;border:1px solid var(--line);
+    border-radius:5px;padding:1px 7px;font-size:12px;color:var(--ink)}
+  code.inline{font-family:ui-monospace,Menlo,monospace;background:#eef0f4;border-radius:5px;padding:1px 6px;font-size:12.5px;color:#b5316b}
+  a.link{color:var(--blue);font-weight:600;text-decoration:none;border-bottom:1px solid #bcd2ff}
+
+  /* final test */
+  .devices{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+  .device{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfcfe;text-align:center}
+  .device .ph{font-size:32px;margin-bottom:6px}
+  .device h4{font-size:14px;margin-bottom:4px}
+  .device p{font-size:12.5px;color:var(--muted)}
+  .arrow-mid{display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--supa-dark)}
+
+  .footer{text-align:center;color:var(--muted);font-size:13px;margin-top:40px;padding-top:24px;border-top:1px solid var(--line)}
+  @media(max-width:680px){
+    .overview{grid-template-columns:1fr}
+    .mock .sidebar{display:none}
+    .devices{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="badge">● Guide pas-à-pas · aucune compétence technique requise</div>
+  <h1>Mettre Bénévolat FC en ligne</h1>
+  <p>Connecte ta base de données Supabase et publie l'application sur Vercel. Environ <b>15 minutes</b>, tout gratuit.</p>
+  <div class="meta">
+    <span>🟢 Supabase — base de données</span>
+    <span>▲ Vercel — hébergement</span>
+    <span>💸 0 $ / mois</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- OVERVIEW -->
+  <div class="overview">
+    <div class="ov"><span class="tag supa">Supabase</span><div class="n">1</div><h4>Créer la base</h4><p>Nouveau projet + coller le script SQL</p></div>
+    <div class="ov"><span class="tag supa">Config</span><div class="n">2</div><h4>Brancher les clés</h4><p>Copier 2 valeurs dans <code class="inline">config.js</code></p></div>
+    <div class="ov"><span class="tag verc">Vercel</span><div class="n">3</div><h4>Déployer</h4><p>Importer le dépôt GitHub → en ligne</p></div>
+  </div>
+
+  <div class="note tip" style="margin-bottom:34px">
+    <span class="ic">💡</span>
+    <div><b>Bon à savoir :</b> si tu sautes les étapes 1-2, l'application marche quand même en « mode démo hors-ligne » (données sur l'appareil uniquement). Ces étapes servent à <b>partager les données entre tous les appareils en temps réel</b>.</div>
+  </div>
+
+  <!-- ============ STEP 1 : SUPABASE ============ -->
+  <div class="step">
+    <div class="step-head">
+      <div class="circle c-supa">1</div>
+      <div><h2>Créer la base de données</h2><div class="sub">Sur supabase.com — gratuit, pas de carte bancaire</div></div>
+    </div>
+    <div class="step-body">
+      <ol class="tasks">
+        <li>
+          <h3>Crée un compte et un projet</h3>
+          <p>Va sur <a class="link" href="https://supabase.com">supabase.com</a> → <b>Start your project</b>. Connecte-toi avec ton compte GitHub (le plus simple). Puis clique <b>New project</b>.</p>
+          <div class="mock">
+            <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="u">app.supabase.com/new</span></div>
+            <div class="screen">
+              <div class="content" style="width:100%">
+                <h5>Créer un nouveau projet</h5>
+                <div class="field"><label>Name</label><div class="inp">benevolat-fc</div></div>
+                <div class="field"><label>Database Password</label><div class="inp">••••••••••••  <span class="copy">Generate</span></div></div>
+                <div class="field"><label>Region</label><div class="inp">East US (North Virginia) ⌄</div></div>
+                <div style="margin-top:12px"><span class="btn btn-green">Create new project<span class="cursor">🖱️</span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="note warn"><span class="ic">⚠️</span><div><b>Note le mot de passe</b> de la base quelque part. Choisis une région proche de toi (ex. <i>East US</i> pour le Québec). La création prend ~2 minutes.</div></div>
+        </li>
+
+        <li>
+          <h3>Ouvre le « SQL Editor »</h3>
+          <p>Dans le menu de gauche, clique sur l'icône <b>SQL Editor</b> (symbole <code class="inline">&gt;_</code>), puis <b>+ New query</b>.</p>
+          <div class="mock">
+            <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="u">app.supabase.com/project/…/sql</span></div>
+            <div class="screen">
+              <div class="sidebar">
+                <div class="logo"><span class="sq"></span>benevolat-fc</div>
+                <a href="#">🏠 Home</a>
+                <a href="#">🗂️ Table Editor</a>
+                <a href="#" class="on">&gt;_ SQL Editor</a>
+                <a href="#">🔐 Authentication</a>
+                <a href="#">⚙️ Project Settings</a>
+              </div>
+              <div class="content">
+                <h5>SQL Editor <span style="float:right;font-size:11px;color:var(--supa-dark);background:#e4f9ef;padding:2px 8px;border-radius:5px">+ New query</span></h5>
+                <div class="sqlbox"><div class="top"><span>query-1.sql</span><span>▶ Run</span></div><pre><span class="cm">-- Colle le contenu de supabase/schema.sql ici</span>
+<span class="cm">-- puis clique sur « Run »</span></pre></div>
+              </div>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h3>Colle le script <code class="inline">schema.sql</code> et lance-le</h3>
+          <p>Ouvre le fichier <code class="inline">supabase/schema.sql</code> du projet, copie <b>tout</b> son contenu, colle-le dans l'éditeur, puis clique <b>Run</b> (ou <span class="kbd">Ctrl/Cmd + Entrée</span>).</p>
+          <div class="sqlbox">
+            <div class="top"><span>schema.sql — extrait</span><span style="color:var(--supa)">▶ Run ✓</span></div>
+            <pre><span class="cm">-- Bénévolat FC : tables, sécurité (RLS), temps réel, données démo</span>
+<span class="kw">create table</span> activites   ( id …, nom text, heures numeric … );
+<span class="kw">create table</span> evenements  ( id …, titre text, date date … );
+<span class="kw">create table</span> besoins     ( … );   <span class="cm">-- postes requis par événement</span>
+<span class="kw">create table</span> inscriptions( … );   <span class="cm">-- choix des joueurs</span>
+
+<span class="kw">alter table</span> … <span class="kw">enable row level security</span>;
+<span class="kw">alter publication</span> supabase_realtime <span class="kw">add table</span> inscriptions;
+<span class="cm">-- + insertion des données de démonstration…</span></pre>
+          </div>
+          <div class="note ok"><span class="ic">✅</span><div>Tu dois voir <b>« Success. No rows returned »</b>. Va dans <b>Table Editor</b> : les tables <code class="inline">activites</code>, <code class="inline">evenements</code>, <code class="inline">besoins</code>, <code class="inline">inscriptions</code> apparaissent avec les données de démo.</div></div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ============ STEP 2 : CONFIG ============ -->
+  <div class="step">
+    <div class="step-head">
+      <div class="circle c-supa">2</div>
+      <div><h2>Brancher les clés dans l'app</h2><div class="sub">Copier 2 valeurs publiques dans supabase/config.js</div></div>
+    </div>
+    <div class="step-body">
+      <ol class="tasks">
+        <li>
+          <h3>Récupère l'URL et la clé « anon »</h3>
+          <p>Menu de gauche → <b>Project Settings</b> (⚙️) → onglet <b>API</b>. Tu vois deux infos à copier :</p>
+          <div class="mock">
+            <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="u">app.supabase.com/project/…/settings/api</span></div>
+            <div class="screen">
+              <div class="sidebar">
+                <div class="logo"><span class="sq"></span>benevolat-fc</div>
+                <a href="#">🏠 Home</a>
+                <a href="#">🗂️ Table Editor</a>
+                <a href="#">&gt;_ SQL Editor</a>
+                <a href="#" class="on">⚙️ Settings › API</a>
+              </div>
+              <div class="content">
+                <h5>Project API</h5>
+                <div class="field"><label>① Project URL</label><div class="inp"><span style="color:var(--supa-dark)">https://abcdefgh.supabase.co</span><span class="copy">📋 Copy</span></div></div>
+                <div class="field"><label>② Project API keys — <b>anon · public</b></label><div class="inp"><span style="color:var(--supa-dark)">eyJhbGciOiJIUzI1NiIsInR5cCI…</span><span class="copy">📋 Copy</span></div></div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">⚠️ Ne copie PAS la clé « service_role » (secrète).</div>
+              </div>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h3>Colle-les dans <code class="inline">supabase/config.js</code></h3>
+          <p>Ouvre le fichier, remplis les <b>2 lignes surlignées</b> (garde bien les guillemets). C'est tout ce qui change dans ce fichier.</p>
+          <div class="filebox">
+            <div class="fname">supabase/config.js</div>
+            <pre><span class="cm2">/* Va sur Supabase → Settings → API pour ces 2 valeurs */</span>
+<span class="hl"><span class="var">window</span>.SUPABASE_URL      = <span class="str">"https://abcdefgh.supabase.co"</span>;  <span class="cm2">// ① Project URL</span></span>
+<span class="hl"><span class="var">window</span>.SUPABASE_ANON_KEY = <span class="str">"eyJhbGciOiJIUzI1Ni…"</span>;            <span class="cm2">// ② clé anon public</span></span>
+
+<span class="cm2">// Si ces 2 champs restent vides → mode démo hors-ligne (localStorage).</span>
+<span class="var">window</span>.SUPA_ENABLED = !!(<span class="var">window</span>.SUPABASE_URL && <span class="var">window</span>.SUPABASE_ANON_KEY);</pre>
+          </div>
+          <div class="note tip"><span class="ic">🔒</span><div>Ces 2 valeurs sont <b>publiques par conception</b> — la sécurité est assurée par les règles RLS du script SQL. Aucun secret n'est exposé.</div></div>
+        </li>
+
+        <li>
+          <h3>Pousse le changement sur GitHub</h3>
+          <p>Enregistre le fichier et envoie-le sur ton dépôt <b>BenevolatFc</b>. Depuis l'interface web de GitHub : ouvre <code class="inline">supabase/config.js</code> → ✏️ <b>Edit</b> → colle → <b>Commit changes</b>. (Ou dis-moi les 2 valeurs et je le fais pour toi.)</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ============ STEP 3 : VERCEL ============ -->
+  <div class="step">
+    <div class="step-head">
+      <div class="circle c-verc">3</div>
+      <div><h2>Déployer sur Vercel</h2><div class="sub">Publier le site — aucune configuration nécessaire</div></div>
+    </div>
+    <div class="step-body">
+      <ol class="tasks">
+        <li>
+          <h3>Connecte-toi et importe le dépôt</h3>
+          <p>Va sur <a class="link" href="https://vercel.com">vercel.com</a> → connecte-toi avec <b>GitHub</b>. Clique <b>Add New… → Project</b>, puis <b>Import</b> à côté du dépôt <b>BenevolatFc</b>.</p>
+          <div class="mock">
+            <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="u">vercel.com/new</span></div>
+            <div class="screen">
+              <div class="content" style="width:100%">
+                <h5>Import Git Repository</h5>
+                <div class="field"><div class="inp" style="align-items:center"><span>📦 toncompte / <b>BenevolatFc</b></span><span class="btn btn-dark" style="padding:5px 14px;font-size:12px">Import<span class="cursor">🖱️</span></span></div></div>
+                <div class="field"><div class="inp" style="color:var(--muted)"><span>📦 toncompte / autre-depot</span><span class="copy">Import</span></div></div>
+              </div>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h3>Clique « Deploy »</h3>
+          <p>Ne touche à aucun réglage (le projet est un site statique). Clique simplement <b>Deploy</b>.</p>
+          <div class="mock">
+            <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="u">vercel.com/new/…/configure</span></div>
+            <div class="screen">
+              <div class="content" style="width:100%">
+                <h5>Configure Project — <span style="color:var(--muted);font-weight:400">BenevolatFc</span></h5>
+                <div class="field"><label>Framework Preset</label><div class="inp" style="color:var(--muted)">Other (aucun) — parfait ✓</div></div>
+                <div class="field"><label>Build & Output</label><div class="inp" style="color:var(--muted)">Laisser par défaut</div></div>
+                <div style="margin-top:12px"><span class="btn btn-dark">▲ Deploy<span class="cursor">🖱️</span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="note ok"><span class="ic">🎉</span><div>Après ~30 secondes : <b>« Congratulations! »</b>. Tu obtiens une adresse du type <code class="inline">benevolat-fc.vercel.app</code> — c'est ton app en ligne, partageable avec toute l'équipe.</div></div>
+        </li>
+
+        <li>
+          <h3>À chaque futur changement</h3>
+          <p>Vercel redéploie <b>automatiquement</b> à chaque <i>commit</i> sur GitHub. Tu ne referas plus jamais cette étape.</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ============ FINAL TEST ============ -->
+  <div class="step">
+    <div class="step-head">
+      <div class="circle c-test">✓</div>
+      <div><h2>Vérifier le temps réel</h2><div class="sub">Le test qui prouve que tout fonctionne</div></div>
+    </div>
+    <div class="step-body">
+      <p style="font-size:14.5px;color:#3b4560;margin-bottom:4px">Ouvre l'adresse <code class="inline">.vercel.app</code> sur <b>deux appareils</b> en même temps (ou ton ordi + ton téléphone) :</p>
+      <div class="devices">
+        <div class="device"><div class="ph">💻</div><h4>Ordinateur</h4><p>Un joueur s'inscrit à un poste (ex. « Cantine »)</p></div>
+        <div class="device"><div class="ph">📱</div><h4>Téléphone</h4><p>La place se met à jour <b>toute seule</b>, sans rafraîchir</p></div>
+      </div>
+      <div class="arrow-mid">⚡ mise à jour instantanée ⚡</div>
+      <div class="note ok" style="margin-top:16px"><span class="ic">✅</span><div><b>Si la place change sur les deux écrans en même temps → c'est gagné.</b> Les données sont désormais persistantes et partagées entre tous les appareils.</div></div>
+      <div class="note warn"><span class="ic">🛟</span><div><b>Si rien ne se synchronise :</b> ouvre la console du navigateur (<span class="kbd">F12</span>). Tu verras soit « Client Supabase initialisé ✓ » (bon signe), soit un message de repli. Envoie-moi le message et je diagnostique.</div></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Bénévolat FC · Guide de déploiement · Prépare tes 2 valeurs Supabase et on branche ça ensemble 💪
+  </div>
+
+</div>
+</body>
+</html>
