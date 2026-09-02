@@ -13,7 +13,7 @@
  * « démo hors-ligne » (localStorage), exactement comme avant.
  * ==========================================================================*/
 window.SUPABASE_URL      = "https://tjdzqlzthxtrmetfadmy.supabase.co";
-window.SUPABASE_ANON_KEY = "";   // ← colle ici la Publishable key (ex. "sb_publishable_..." ou "eyJhbGci...")
+window.SUPABASE_ANON_KEY = "sb_publishable_uoMfS5tc0AGtLYtsOoB4sQ_12XIo_0g";
 
 /* --- Détection : la persistance cloud est-elle configurée ? --------------- */
 window.SUPA_ENABLED = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY);
