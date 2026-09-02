@@ -1,3 +1,7 @@
 node_modules/
 *.log
 .DS_Store
+
+# fichiers de vérification jetables
+_verify_*.js
+_smoke_*.js
