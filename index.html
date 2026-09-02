@@ -447,6 +447,10 @@ tr:hover td{background:var(--surface2)}
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
+<!-- Persistance Supabase (optionnelle) : si config.js contient des clés, l'app passe en mode cloud + temps réel ; sinon repli localStorage. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase/config.js"></script>
+<script src="supabase/data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
