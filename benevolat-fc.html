@@ -567,6 +567,12 @@ const I18N = {
     seasonConfirmWord:"EFFACER",
     seasonGoBtn:"Effacer et démarrer la saison",
     seasonDone:"Nouvelle saison démarrée : {n} événement(s) et {r} inscription(s) effacés.",
+    delPlayer:"Retirer", delPlayerTitle:"Retirer le joueur",
+    delPlayerWarn:"Retirer <b>{name}</b> de l'équipe ? Cette action est irréversible.",
+    delPlayerRegs:"{r} inscription(s) de ce joueur seront aussi supprimées.",
+    delPlayerParent:"Ce joueur est lié à un parent ({p}) : le lien sera retiré.",
+    delPlayerGo:"Retirer le joueur", delPlayerDone:"{name} a été retiré de l'équipe.",
+    delInvite:"Annuler l'invitation", delInviteDone:"Invitation annulée.",
     noNeeds:"Ajoutez au moins un besoin (activité + nombre de places).",
     // rappels courriel
     reminders:"Rappels courriel", sendReminders:"Envoyer les rappels", previewReminders:"Aperçu des courriels",
@@ -727,6 +733,12 @@ const I18N = {
     seasonConfirmWord:"ERASE",
     seasonGoBtn:"Erase and start season",
     seasonDone:"New season started: {n} event(s) and {r} sign-up(s) cleared.",
+    delPlayer:"Remove", delPlayerTitle:"Remove player",
+    delPlayerWarn:"Remove <b>{name}</b> from the team? This action is irreversible.",
+    delPlayerRegs:"{r} sign-up(s) from this player will also be deleted.",
+    delPlayerParent:"This player is linked to a parent ({p}): the link will be removed.",
+    delPlayerGo:"Remove player", delPlayerDone:"{name} was removed from the team.",
+    delInvite:"Cancel invitation", delInviteDone:"Invitation cancelled.",
     noNeeds:"Add at least one need (activity + number of spots).",
     // email reminders
     reminders:"Email reminders", sendReminders:"Send reminders", previewReminders:"Email preview",
@@ -2555,11 +2567,12 @@ function renderMembers(c){
     <div class="card">
       <div class="card-head"><h3>${t('rolePlayer')}s</h3>
         <button class="btn btn-primary btn-sm" onclick="openInviteModal()">+ ${t('invitePlayers')}</button></div>
-      <table><thead><tr><th>${t('name')}</th><th>${t('email')}</th><th>${t('category')}</th><th>${t('hoursShort')}</th></tr></thead><tbody>
+      <table><thead><tr><th>${t('name')}</th><th>${t('email')}</th><th>${t('category')}</th><th>${t('hoursShort')}</th><th></th></tr></thead><tbody>
       ${players.length?players.map(u=>`<tr><td><div style="display:flex;align-items:center;gap:10px">${avatarHTML(u)}<b>${esc(u.first)} ${esc(u.last)}</b></div></td>
         <td style="color:var(--muted)">${esc(u.email)}</td>
         <td>${catSelect(u)}</td>
-        <td><span class="chip" style="background:var(--brand-light);color:var(--brand-dark)">${playerHours(u.id)} / ${DB.settings.hoursGoal} ${t('hoursShort')}</span></td></tr>`).join(''):`<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px">—</td></tr>`}
+        <td><span class="chip" style="background:var(--brand-light);color:var(--brand-dark)">${playerHours(u.id)} / ${DB.settings.hoursGoal} ${t('hoursShort')}</span></td>
+        <td style="text-align:right"><button class="btn btn-ghost btn-sm" title="${t('delPlayer')}" onclick="confirmDeletePlayer('${u.id}')">🗑️</button></td></tr>`).join(''):`<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">—</td></tr>`}
       </tbody></table>
     </div>
     ${parents.length?`<div class="card">
@@ -2579,7 +2592,8 @@ function renderMembers(c){
         <td style="color:var(--muted)">${esc(u.email)}</td>
         <td>${catSelect(u)}</td>
         <td><span class="chip" style="background:#fef3c7;color:#92400e">${t('invited')}</span></td>
-        <td><button class="btn btn-ghost btn-sm" onclick="copyInvite('${u.id}')">🔗 ${t('copyLink')}</button></td></tr>`).join('')}
+        <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="copyInvite('${u.id}')">🔗 ${t('copyLink')}</button>
+          <button class="btn btn-ghost btn-sm" title="${t('delInvite')}" onclick="confirmDeletePlayer('${u.id}')">🗑️</button></td></tr>`).join('')}
       </tbody></table>
     </div>`:''}`;
 }
@@ -2596,6 +2610,38 @@ function setPlayerCategory(pid,val){
     DB.regs=DB.regs.filter(r=>{ if(r.pid!==pid) return true; const ev=eventById(r.eid); return !(ev && ev.category===u.category); });
   }
   saveDB(); toast(t('savedOk'),'ok'); render();
+}
+// Coach retire un joueur (ou annule une invitation). Confirmation avec détails d'impact.
+function confirmDeletePlayer(pid){
+  const u=userById(pid); if(!u) return;
+  const invited = u.status==='invited';
+  const regCount = DB.regs.filter(r=>r.pid===pid).length;
+  const parents = DB.users.filter(p=>p.role==='parent' && (p.childIds||[]).includes(pid));
+  const name = fullName(u);
+  let body = `<p style="font-size:15px;margin:0 0 10px">${t('delPlayerWarn').replace('{name}',esc(name))}</p>`;
+  const notes=[];
+  if(regCount) notes.push(t('delPlayerRegs').replace('{r}',regCount));
+  if(parents.length) notes.push(t('delPlayerParent').replace('{p}',esc(parents.map(fullName).join(', '))));
+  if(notes.length) body += `<ul class="need-note" style="margin:0;padding-left:18px">${notes.map(n=>`<li>${n}</li>`).join('')}</ul>`;
+  modal(invited?t('delInvite'):t('delPlayerTitle'), body,
+    [{label:t('cancel'),cls:'btn-ghost',fn:closeModal},
+     {label:invited?t('delInvite'):t('delPlayerGo'),cls:'btn-danger',fn:()=>deletePlayer(pid)}]);
+}
+// Suppression propre : retire l'utilisateur, ses inscriptions, et le lien depuis tout parent.
+function deletePlayer(pid){
+  const u=userById(pid); if(!u) return;
+  const invited = u.status==='invited';
+  const name = fullName(u);
+  const regCount = DB.regs.filter(r=>r.pid===pid).length;
+  DB.regs = DB.regs.filter(r=>r.pid!==pid);
+  // délier de tout parent ; si un parent n'a plus d'enfant, il est retiré aussi
+  DB.users.forEach(p=>{ if(p.role==='parent' && (p.childIds||[]).includes(pid)) p.childIds=p.childIds.filter(id=>id!==pid); });
+  DB.users = DB.users.filter(p=>!(p.role==='parent' && (!p.childIds || p.childIds.length===0)));
+  DB.users = DB.users.filter(x=>x.id!==pid);
+  LOG.info(invited?'Invitation annulée':'Joueur retiré',{userId:pid, userName:name, regsRemoved:regCount});
+  saveDB(); closeModal();
+  toast((invited?t('delInviteDone'):t('delPlayerDone').replace('{name}',name)),'ok');
+  render();
 }
 function openCoachModal(){
   modal(t('addCoach'), `

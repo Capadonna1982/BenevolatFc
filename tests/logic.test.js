@@ -597,6 +597,39 @@ eq('suggestion incrémente la plage d\'années', sb.suggestNextSeasonName('Saiso
 check('suggestion par défaut contient une plage d\'années', /\d{4}-\d{4}/.test(sb.suggestNextSeasonName('')));
 
 /* --------------------------------------------------------------- */
+section('15. Retrait de joueurs (début de saison)');
+reset();
+run("toast=function(){}; render=function(){}; closeModal=function(){};");
+// Choisir un joueur qui a des inscriptions
+run("_pid = DB.regs.length ? DB.regs[0].pid : DB.users.find(function(u){return u.role==='player';}).id;");
+let pid = run("_pid");
+let usersBeforeDel = getDB().users.length;
+let regsForPlayer = run("DB.regs.filter(function(r){return r.pid===_pid;}).length");
+check('le joueur cible existe', run("!!userById(_pid)")===true);
+run("deletePlayer(_pid);");
+check('le joueur est supprimé de DB.users', run("!userById(_pid)")===true);
+eq('les inscriptions du joueur sont supprimées', run("DB.regs.filter(function(r){return r.pid===_pid;}).length"), 0);
+check('le nombre d\'utilisateurs a diminué', getDB().users.length < usersBeforeDel);
+// Délien parent-enfant : créer un parent avec 2 enfants, en retirer un
+reset();
+run("toast=function(){}; render=function(){}; closeModal=function(){};");
+run("var pls=DB.users.filter(function(u){return u.role==='player';}); _k1=pls[0].id; _k2=pls[1].id; DB.users.push({id:'u_par2',first:'Sophie',last:'Roy',email:'sophie@ex.ca',pass:'x',role:'parent',status:'active',childIds:[_k1,_k2]});");
+run("deletePlayer(_k1);");
+let par = run("DB.users.find(function(u){return u.id==='u_par2';})");
+check('le parent existe encore (il reste 1 enfant)', !!par);
+eq('l\'enfant retiré est délié du parent', run("(DB.users.find(function(u){return u.id==='u_par2';}).childIds||[]).indexOf(_k1)"), -1);
+eq('l\'autre enfant reste lié', run("(DB.users.find(function(u){return u.id==='u_par2';}).childIds||[]).indexOf(_k2)>=0 ? 1 : 0"), 1);
+// Parent orphelin : retirer le dernier enfant -> le parent est retiré aussi
+run("deletePlayer(_k2);");
+check('le parent devenu orphelin est retiré', run("!DB.users.find(function(u){return u.id==='u_par2';})")===true);
+// Annulation d'invitation : un joueur 'invited' est retiré comme les autres
+reset();
+run("toast=function(){}; render=function(){}; closeModal=function(){};");
+run("_inv={id:'u_inv1',first:'Nouveau',last:'Joueur',email:'inv@ex.ca',pass:'x',role:'player',status:'invited'}; DB.users.push(_inv);");
+run("deletePlayer('u_inv1');");
+check('invitation en attente annulée (utilisateur retiré)', run("!userById('u_inv1')")===true);
+
+/* --------------------------------------------------------------- */
 console.log('\n' + '─'.repeat(50));
 if(failed===0){
   console.log(`\x1b[32m\x1b[1m✓ TOUS LES TESTS PASSENT — ${passed}/${passed} assertions\x1b[0m`);
