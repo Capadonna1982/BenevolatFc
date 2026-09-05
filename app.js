@@ -6,7 +6,7 @@
 /* ---------------- i18n ---------------- */
 const I18N = {
   fr:{
-    appName:"Bénévolat FC", appTagline:"Gestion des heures de bénévolat de l'équipe",
+    appName:"Bénévolat FC", appTagline:"Gestion des heures de bénévolat de l'équipe", loading:"Chargement…",
     login:"Connexion", signup:"Inscription", email:"Courriel", password:"Mot de passe",
     loginBtn:"Se connecter", signupBtn:"Créer mon compte joueur",
     firstName:"Prénom", lastName:"Nom", logout:"Déconnexion",
@@ -181,7 +181,7 @@ const I18N = {
     hoursCredited:"heures créditées", target:"objectif"
   },
   en:{
-    appName:"Volunteer FC", appTagline:"Team volunteer hours management",
+    appName:"Volunteer FC", appTagline:"Team volunteer hours management", loading:"Loading…",
     login:"Log in", signup:"Sign up", email:"Email", password:"Password",
     loginBtn:"Log in", signupBtn:"Create my player account",
     firstName:"First name", lastName:"Last name", logout:"Log out",
@@ -737,7 +737,7 @@ function doLogin(ev){
   if(invited){ LOG.warn('Connexion : compte invité non activé',{email:email}); showAuthErr(t('errInvitedNotActive')); setAuthTab('activate'); document.getElementById('acEmail').value=email; return false; }
   const u=DB.users.find(x=>x.email.toLowerCase()===email && x.pass===pass);
   if(!u){ LOG.warn('Échec de connexion (identifiants invalides)',{email:email}); showAuthErr(t('errBadLogin')); return false; }
-  SESSION={userId:u.id}; localStorage.setItem('bfc_session', u.id);
+  SESSION={userId:u.id}; sessionStorage.setItem('bfc_session', u.id);
   LOG.event('Connexion réussie',{userId:u.id, userName:(u.first+' '+(u.last||'')).trim(), role:u.role});
   enterApp();
   return false;
@@ -816,7 +816,7 @@ function doActivate(ev){
     LOG.event('Activation autonome (compte recréé depuis le lien)',{userId:u.id, userName:(u.first+' '+(u.last||'')).trim(), email:u.email, role:u.role, category:u.category, inviteCode:code});
   }
   saveDB();
-  SESSION={userId:u.id}; localStorage.setItem('bfc_session', u.id);
+  SESSION={userId:u.id}; sessionStorage.setItem('bfc_session', u.id);
   enterApp(); toast(t('accountActivated'),'ok');
   return false;
 }
@@ -859,14 +859,14 @@ function doSignup(ev){
   }
   DB.users.push(u); saveDB();
   LOG.event('Création de compte',{userId:u.id, userName:(u.first+' '+(u.last||'')).trim(), email:u.email, role:u.role, category:u.category||null, childIds:u.childIds||null});
-  SESSION={userId:u.id}; localStorage.setItem('bfc_session', u.id);
+  SESSION={userId:u.id}; sessionStorage.setItem('bfc_session', u.id);
   enterApp(); toast(t('accountCreated'),'ok');
   return false;
 }
 function logout(){
   const me=currentUser();
   LOG.event('Déconnexion',{userId:me&&me.id, userName:me?(me.first+' '+(me.last||'')).trim():null});
-  SESSION=null; localStorage.removeItem('bfc_session');
+  SESSION=null; sessionStorage.removeItem('bfc_session'); sessionStorage.removeItem('bfc_view');
   document.getElementById('app').classList.add('hidden');
   document.getElementById('authScreen').classList.remove('hidden');
   document.getElementById('loginForm').reset(); document.getElementById('signupForm').reset();
@@ -1084,15 +1084,25 @@ function enterApp(){
   rb.textContent = u.role==='coach'?t('roleCoach'):(u.role==='parent'?t('roleParent'):t('rolePlayer'));
   rb.className='role-badge '+(u.role==='coach'?'role-coach':(u.role==='parent'?'role-parent':'role-player'));
   document.getElementById('langBtn').textContent = lang==='fr'?'EN':'FR';
-  state.view = u.role==='coach' ? 'events' : 'dash';
+  // Vue par défaut selon le rôle, mais on restaure la dernière vue de CET onglet si elle est valide (survit au refresh).
+  const defView = u.role==='coach' ? 'events' : 'dash';
+  const validViews = u.role==='coach'
+    ? ['events','activities','tracking','members','settings','logs']
+    : ['dash','calendar','myhours'];
+  let saved=null; try{ saved=sessionStorage.getItem('bfc_view'); }catch(e){}
+  state.view = (saved && validViews.indexOf(saved)!==-1) ? saved : defView;
   LOG.event('Entrée dans l\'app',{userId:u.id, name:(u.first+' '+(u.last||'')).trim(), role:u.role, startView:state.view});
   LOG.nav(state.view,{from:'(boot)'});
   render();
+  // Chargement terminé : on dévoile l'app (supprime le clignotement de l'écran de connexion).
+  document.body.classList.remove('booting');
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
   applyDevFromHash();
   LOG.info('Démarrage de l\'application',{lang:lang, ts:nowISO(), dev:isDev()});
+  // Filet de sécurité : ne jamais laisser le splash bloqué si un imprévu survient.
+  setTimeout(function(){ document.body.classList.remove('booting'); }, 6000);
   bootData().then(finishBoot).catch(function(e){
     if(window.LOG) LOG.error('Boot Supabase — repli localStorage',{err:String(e)});
     loadDB(); finishBoot();
@@ -1133,8 +1143,10 @@ function finishBoot(){
   applyBranding();
   // Raccourci développeur : Ctrl+Shift+D bascule le mode dév
   try{ window.addEventListener('keydown', function(ev){ if((ev.ctrlKey||ev.metaKey)&&ev.shiftKey&&(ev.key==='D'||ev.key==='d')){ ev.preventDefault(); toggleDev(); } }); }catch(e){}
-  const sid=localStorage.getItem('bfc_session');
+  const sid=sessionStorage.getItem('bfc_session');
   if(sid && DB.users.find(u=>u.id===sid)){ SESSION={userId:sid}; LOG.info('Session restaurée',{userId:sid}); enterApp(); return; }
+  // Aucune session active dans cet onglet : on montre l'écran de connexion (fin du chargement).
+  document.body.classList.remove('booting');
   // Auto-remplissage depuis un lien d'invitation : #invite=inv_xxx&email=...
   maybePrefillFromInviteHash();
 }
@@ -1270,7 +1282,7 @@ function renderSidebar(u){
     `<button class="nav-item ${state.view===v?'active':''}" onclick="go('${v}')">
        <span class="ico">${ic}</span><span class="txt">${esc(label)}</span></button>`).join('');
 }
-function go(v){ const from=state.view; state.view=v; LOG.nav(v,{from:from}); render(); window.scrollTo(0,0); }
+function go(v){ const from=state.view; state.view=v; try{ sessionStorage.setItem('bfc_view', v); }catch(e){} LOG.nav(v,{from:from}); render(); window.scrollTo(0,0); }
 
 /* ---------------- PLAYER: Dashboard ---------------- */
 function renderPlayerDash(c){
