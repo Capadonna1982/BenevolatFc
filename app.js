@@ -178,7 +178,20 @@ const I18N = {
     at:"à", confirmDelete:"Confirmer la suppression ?", members:"membres",
     filled:"pourvues", of:"sur", registeredPlayers:"Joueurs inscrits",
     yourSpot:"Votre place", noColor:"Couleur", eventPast:"Événement passé",
-    hoursCredited:"heures créditées", target:"objectif"
+    hoursCredited:"heures créditées", target:"objectif",
+    // affecter candidats
+    assignCandidates:"Affecter les candidats",
+    assignCandidatesTitle:"Affecter les candidats en attente",
+    assignCandidatesDesc:"Ces joueurs sont en liste d'attente pour cet événement. Affectez-les aux postes encore disponibles.",
+    openSpots:"Postes avec places disponibles",
+    waitingCandidates:"Candidats en attente",
+    waitingFor:"En attente — ",
+    assignTo:"Affecter à",
+    assignBtn:"Affecter",
+    noOpenSpots:"Aucun poste avec places disponibles.",
+    noWaitingCandidates:"Aucun candidat en attente.",
+    assignedOk:(name,spot)=>`${name} affecté(e) au poste « ${spot} »`,
+    assignCandidatesNone:"Aucun candidat en attente ni place disponible pour le moment."
   },
   en:{
     appName:"Volunteer FC", appTagline:"Team volunteer hours management", loading:"Loading…",
@@ -338,7 +351,16 @@ const I18N = {
     at:"at", confirmDelete:"Confirm deletion?", members:"members",
     filled:"filled", of:"of", registeredPlayers:"Registered players",
     yourSpot:"Your spot", noColor:"Color", eventPast:"Past event",
-    hoursCredited:"hours credited", target:"goal"
+    hoursCredited:"hours credited", target:"goal",
+    assignCandidates:"Assign Candidates",
+    assignCandidatesTitle:"Assign Waiting Candidates",
+    assignCandidatesDesc:"The players below are waiting for a spot in this event. Assign them to an available position.",
+    waitingFor:(name,act)=>`${name} — waiting: ${act}`,
+    assignTo:"Assign to:", assignBtn:"Assign",
+    noWaitingCandidates:"No waiting candidates for this event.",
+    noOpenSlots:"No open slots available.",
+    assignedOk:(name,act)=>`${name} assigned to ${act}`,
+    assignCandidatesEmpty:"No candidates can be reassigned right now."
   }
 };
 let lang = localStorage.getItem('bfc_lang') || 'fr';
@@ -1002,6 +1024,109 @@ function sendEventReminders(eid){
 }
 function clearOutbox(){ DB.outbox=[]; saveDB(); LOG.event('Boîte d\'envoi vidée',{}); render(); }
 
+// ── Affecter les candidats en attente ─────────────────────────────────────────
+
+/* Returns true if the event has at least one open slot AND at least one waiting candidate */
+function eventHasAssignableCandidates(e){
+  if(!e||!e.needs) return false;
+  const hasOpen = e.needs.some(n=>(n.slots||[]).filter(s=>s.uid).length < (n.qty||1));
+  const hasWaiting = e.needs.some(n=>(n.waiting||[]).length>0);
+  return hasOpen && hasWaiting;
+}
+
+/* Returns all waiting candidates across all needs of an event (flat list) */
+function getWaitingCandidates(e){
+  const result=[];
+  (e.needs||[]).forEach(n=>{
+    const act=activity(n.actId);
+    (n.waiting||[]).forEach(w=>{
+      const p=playerById(w.uid)||parentById(w.uid);
+      if(p) result.push({pid:w.uid, name:p.name, needId:n.id, actName:act?act.name:'?', waitSince:w.ts||0});
+    });
+  });
+  result.sort((a,b)=>a.waitSince-b.waitSince);
+  return result;
+}
+
+/* Returns needs with open slots */
+function getOpenNeeds(e){
+  return (e.needs||[]).filter(n=>{
+    const filled=(n.slots||[]).filter(s=>s.uid).length;
+    return filled < (n.qty||1);
+  }).map(n=>{
+    const act=activity(n.actId);
+    const filled=(n.slots||[]).filter(s=>s.uid).length;
+    return {needId:n.id, actName:act?act.name:'?', actId:n.actId, open:(n.qty||1)-filled};
+  });
+}
+
+/* Assign a waiting candidate to an open need */
+function assignCandidate(eid, pid, fromNeedId, toNeedId){
+  const e=eventById(eid); if(!e) return;
+  // Remove from waiting list of source need
+  const fromNeed=e.needs.find(n=>n.id===fromNeedId);
+  if(fromNeed) fromNeed.waiting=(fromNeed.waiting||[]).filter(w=>w.uid!==pid);
+  // Add to slots of target need (first open slot)
+  const toNeed=e.needs.find(n=>n.id===toNeedId);
+  if(!toNeed) return;
+  const slotIdx=(toNeed.slots||[]).findIndex(s=>!s.uid);
+  if(toNeed.slots && slotIdx>=0){
+    toNeed.slots[slotIdx].uid=pid;
+  } else {
+    if(!toNeed.slots) toNeed.slots=[];
+    toNeed.slots.push({uid:pid, ts:Date.now()});
+  }
+  // Persist and re-render
+  saveEvents();
+  const act=activity(toNeed.actId);
+  const p=playerById(pid)||parentById(pid);
+  toast(t('assignedOk')(p?p.name:pid, act?act.name:'?'));
+  log(`assignCandidate: ${pid} → ${toNeedId} (from waiting on ${fromNeedId})`);
+  renderPage();
+  closeModal();
+}
+
+/* Coach modal: reassign waiting candidates to open slots */
+function openAssignCandidates(eid){
+  const e=eventById(eid); if(!e) return;
+  const waiting=getWaitingCandidates(e);
+  const openNeeds=getOpenNeeds(e);
+
+  if(!waiting.length||!openNeeds.length){
+    toast(t('assignCandidatesEmpty')); return;
+  }
+
+  const openOpts=openNeeds.map(n=>`<option value="${n.needId}">${esc(n.actName)} (${n.open} ${t('openSlot')||'libre'})</option>`).join('');
+
+  const rows=waiting.map(w=>{
+    const isOwnNeed=openNeeds.find(n=>n.needId===w.needId);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:10px 8px">
+        <strong>${esc(w.name)}</strong><br>
+        <small style="color:var(--muted)">${t('waitingFor')(esc(w.name),esc(w.actName)).split('—')[1].trim()}</small>
+      </td>
+      <td style="padding:10px 8px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="sel_${esc(w.pid)}" class="form-control" style="flex:1;font-size:13px">${openOpts}</select>
+          <button class="btn btn-primary btn-sm" onclick="assignCandidate('${eid}','${w.pid}','${w.needId}',document.getElementById('sel_${w.pid}').value)">${t('assignBtn')}</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const body=`
+    <p style="color:var(--muted);font-size:14px;margin-bottom:12px">${t('assignCandidatesDesc')}</p>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--surface2)">
+        <th style="padding:8px;text-align:left;font-size:13px">${t('player')}</th>
+        <th style="padding:8px;text-align:left;font-size:13px">${t('assignTo')}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  modal(t('assignCandidatesTitle'), body, [{label:t('close'),cls:'btn-ghost',fn:closeModal}]);
+}
+
 // Modale coach : aperçu des rappels d'un événement + envoi simulé + note d'intégration.
 function openReminders(eid){
   const e=eventById(eid); if(!e) return;
@@ -1426,6 +1551,7 @@ function eventCardHTML(e, coachMode){
         <button class="btn btn-ghost btn-sm" onclick="openEventModal('${e.id}')">${t('edit')}</button>
         <button class="btn btn-ghost btn-sm" onclick="copyEvent('${e.id}')">⧉ ${t('copyEvent')}</button>
         <button class="btn btn-ghost btn-sm" onclick="openReminders('${e.id}')">✉ ${t('reminders')}</button>
+        ${eventHasAssignableCandidates(e)?`<button class="btn btn-secondary btn-sm" onclick="openAssignCandidates('${e.id}')">🔀 ${t('assignCandidates')}</button>`:''}
         <button class="btn btn-danger btn-sm" onclick="deleteEvent('${e.id}')">✕</button></div>`:''}
     </div>
     <div class="event-body">
