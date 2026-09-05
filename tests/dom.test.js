@@ -76,12 +76,19 @@ const localStorageStub = {
   setItem(k,v){ store[k]=String(v); },
   removeItem(k){ delete store[k]; }
 };
+const sessionStore = {};
+const sessionStorageStub = {
+  getItem(k){ return k in sessionStore ? sessionStore[k] : null; },
+  setItem(k,v){ sessionStore[k]=String(v); },
+  removeItem(k){ delete sessionStore[k]; }
+};
 const domHandlers = {};
 function addEventListenerStub(evt, cb){ (domHandlers[evt]=domHandlers[evt]||[]).push(cb); }
 documentStub.addEventListener = addEventListenerStub;
 const sandbox = {
   document: documentStub,
   localStorage: localStorageStub,
+  sessionStorage: sessionStorageStub,
   navigator: { language: 'fr' },
   console,
   setTimeout, clearTimeout,

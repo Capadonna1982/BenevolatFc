@@ -50,8 +50,14 @@ function makeSandbox(){
   };
   const windowStub = { addEventListener: () => {}, scrollTo: () => {} };
   const location = { origin:'file://', pathname:'/proto.html', hash:'', search:'' };
+  const sessionStore = {};
+  const sessionStorage = {
+    getItem: k => (k in sessionStore ? sessionStore[k] : null),
+    setItem: (k,v) => { sessionStore[k] = String(v); },
+    removeItem: k => { delete sessionStore[k]; }
+  };
   const sandbox = {
-    localStorage, document, window: windowStub, location,
+    localStorage, sessionStorage, document, window: windowStub, location,
     navigator: { language: 'fr-CA' },
     setTimeout: () => {}, clearTimeout: () => {},
     btoa: s => Buffer.from(s,'binary').toString('base64'),

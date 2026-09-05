@@ -12,8 +12,10 @@ const doc={ getElementById(id){ return nodes[id]||(nodes[id]=mkEl(id)); },
   createElement(){return mkEl();}, addEventListener(){}, documentElement:{}, body:mkEl('body') };
 const store={};
 const localStorageStub={ getItem(k){return k in store?store[k]:null;}, setItem(k,v){store[k]=String(v);}, removeItem(k){delete store[k];} };
+const ssStore={};
+const sessionStorageStub={ getItem(k){return k in ssStore?ssStore[k]:null;}, setItem(k,v){ssStore[k]=String(v);}, removeItem(k){delete ssStore[k];} };
 const handlers={};
-const sandbox={ document:doc, localStorage:localStorageStub, navigator:{language:'fr'}, console,
+const sandbox={ document:doc, localStorage:localStorageStub, sessionStorage:sessionStorageStub, navigator:{language:'fr'}, console,
   setTimeout, clearTimeout, addEventListener:(e,cb)=>{(handlers[e]=handlers[e]||[]).push(cb);},
   alert(){}, confirm(){return true;}, prompt(){return '';}, scrollTo(){} };
 sandbox.window=sandbox; sandbox.globalThis=sandbox;
