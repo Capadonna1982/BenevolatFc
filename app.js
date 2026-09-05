@@ -48,7 +48,7 @@ const I18N = {
     confirmPasswordLabel:"Confirmer le mot de passe", errPassMismatch:"Les mots de passe ne correspondent pas.",
     // nav
     navDash:"Tableau de bord", navCalendar:"Calendrier", navMyHours:"Mes heures",
-    navActivities:"Types d'activités", navEvents:"Événements", navTracking:"Suivi des heures",
+    navActivities:"Types d'activités", navEvents:"Événements", navTracking:"Suivi des heures", navHelp:"Aide",
     navMembers:"Membres", navSettings:"Réglages", navLogs:"Journal",
     // logs / journalisation
     logConsoleTitle:"Console (journal en direct)", logSearch:"Rechercher…", logAll:"Tout",
@@ -192,6 +192,8 @@ const I18N = {
     noWaitingCandidates:"Aucun candidat en attente.",
     assignedOk:(name,spot)=>`${name} affecté(e) au poste « ${spot} »`,
     assignCandidatesNone:"Aucun candidat en attente ni place disponible pour le moment.",
+    autoFillApply:"Remplir automatiquement",
+    autoFillDone:"{n} joueur(s) déplacé(s) depuis la liste d'attente vers des places libres.",
     // feedback
     feedbackBtn:"💬 Retours",
     feedbackModalTitle:"Envoyer un retour",
@@ -249,7 +251,7 @@ const I18N = {
     errInvitedNotActive:"This account isn't activated yet. Use “Activate account”.",
     confirmPasswordLabel:"Confirm password", errPassMismatch:"Passwords do not match.",
     navDash:"Dashboard", navCalendar:"Calendar", navMyHours:"My hours",
-    navActivities:"Activity types", navEvents:"Events", navTracking:"Hours tracking",
+    navActivities:"Activity types", navEvents:"Events", navTracking:"Hours tracking", navHelp:"Help",
     navMembers:"Members", navSettings:"Settings", navLogs:"Logs",
     // logs
     logConsoleTitle:"Console (live log)", logSearch:"Search…", logAll:"All",
@@ -379,6 +381,8 @@ const I18N = {
     noOpenSlots:"No open slots available.",
     assignedOk:(name,act)=>`${name} assigned to ${act}`,
     assignCandidatesEmpty:"No candidates can be reassigned right now.",
+    autoFillApply:"Auto-fill open spots",
+    autoFillDone:"{n} player(s) moved from the waitlist into open spots.",
     // feedback
     feedbackBtn:"💬 Feedback",
     feedbackModalTitle:"Send feedback",
@@ -426,9 +430,19 @@ function saveDB(){
 }
 function loadDB(){
   const raw = localStorage.getItem(DB_KEY);
-  if(raw){ try{ DB = JSON.parse(raw); if(!Array.isArray(DB.outbox)) DB.outbox=[]; if(!Array.isArray(DB.feedbacks)) DB.feedbacks=[]; return; }catch(e){} }
+  if(raw){ try{ DB = JSON.parse(raw); if(!Array.isArray(DB.outbox)) DB.outbox=[]; return; }catch(e){} }
   DB = seedDB();
   saveDB();
+}
+/* Retours (bugs/améliorations) — stockés dans une clé dédiée, indépendante de la
+   synchro cloud Supabase (qui ne connaît pas cette table et l'effacerait). */
+const FEEDBACK_KEY = 'benevolat_feedbacks_v1';
+function getFeedbacks(){
+  try{ const raw = localStorage.getItem(FEEDBACK_KEY); return raw ? JSON.parse(raw) : []; }
+  catch(e){ return []; }
+}
+function saveFeedbacks(list){
+  try{ localStorage.setItem(FEEDBACK_KEY, JSON.stringify(list||[])); }catch(e){}
 }
 function uid(p){ return p + Math.random().toString(36).slice(2,9); }
 function nowISO(){ return new Date().toISOString(); }
@@ -765,7 +779,7 @@ function seedDB(){
   const regsClean = regs.filter(r=>r.id!=='r9');
   return {
     settings:{ hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null, seasonName:'' },
-    users, activities, events, regs:regsClean, outbox:[], feedbacks:[]
+    users, activities, events, regs:regsClean, outbox:[]
   };
 }
 
@@ -1046,6 +1060,9 @@ function emailBodyHTML(m){
 }
 // Simule l'envoi : journalise chaque courriel et l'ajoute à la boîte d'envoi.
 function sendEventReminders(eid){
+  // Avant d'envoyer : on comble les places encore libres avec les candidats
+  // en attente, pour que les instructions du matin reflètent l'affectation finale.
+  runAutoFill(eid, {silent:true});
   const mails=buildEventReminders(eid);
   if(!mails.length){ toast(t('noRecipients'),'err'); return 0; }
   const sentAt=nowISO();
@@ -1062,105 +1079,110 @@ function clearOutbox(){ DB.outbox=[]; saveDB(); LOG.event('Boîte d\'envoi vidé
 
 // ── Affecter les candidats en attente ─────────────────────────────────────────
 
-/* Returns true if the event has at least one open slot AND at least one waiting candidate */
+/* =====================================================================
+   AUTO-REMPLISSAGE (moteur réel, basé sur DB.regs)
+   Objectif : combler les places encore LIBRES d'un événement en y déplaçant
+   les candidats EN ATTENTE des AUTRES activités du même événement, dans
+   l'ordre d'arrivée (1er arrivé, 1er servi).
+
+   Rappel du modèle : DB.regs est une liste plate {id,pid,eid,nid,ts}. Pour un
+   besoin n, les n.qty premières inscriptions (triées par ts) sont ASSIGNÉES ;
+   les suivantes sont EN ATTENTE. Déplacer un candidat en attente ne dérange
+   jamais une personne déjà assignée (on ne touche qu'au surplus).
+   ===================================================================== */
+
+// Places encore libres pour un besoin (>= 0).
+function openCount(eid, need){
+  return Math.max(0, (need.qty||1) - regsForNeed(eid, need.id).length);
+}
+// Une inscription est-elle « en attente » (au-delà de qty pour son besoin) ?
+function isWaitingReg(reg){
+  const ev=eventById(reg.eid); if(!ev||!ev.needs) return false;
+  const need=ev.needs.find(n=>n.id===reg.nid); if(!need) return false;
+  const idx=regsForNeed(reg.eid, reg.nid).findIndex(r=>r.id===reg.id);
+  return idx >= (need.qty||1);
+}
+
+// Calcule les déplacements candidat-en-attente → place-libre pour un événement.
+// opts.commit (défaut true) : applique réellement (modifie reg.nid + saveDB).
+// Retourne la liste des mouvements : [{regId, uid, from, to}].
+function autoFillFromWaitlists(eid, opts){
+  opts=opts||{}; const commit=opts.commit!==false;
+  const ev=eventById(eid); if(!ev||!ev.needs) return [];
+  const moves=[];
+  // Compteur de places libres par besoin (simulation).
+  const openByNeed={}; ev.needs.forEach(n=>{ openByNeed[n.id]=openCount(eid,n); });
+  // Candidats en attente (tous besoins confondus), du plus ancien au plus récent.
+  const waiting = DB.regs.filter(r=>r.eid===eid && isWaitingReg(r)).sort((a,b)=>a.ts-b.ts);
+  waiting.forEach(function(reg){
+    // Premier besoin (ordre stable) différent du sien ayant encore une place libre.
+    const target = ev.needs.find(n=> n.id!==reg.nid && openByNeed[n.id]>0);
+    if(!target) return;
+    moves.push({regId:reg.id, uid:reg.pid, from:reg.nid, to:target.id});
+    openByNeed[target.id]--;          // la place est prise dans la simulation
+    if(commit){ reg.nid=target.id; }  // on conserve le ts d'origine (équité)
+  });
+  if(commit && moves.length){ saveDB(); }
+  return moves;
+}
+
+// Vrai (bouton coach visible) s'il existe au moins un déplacement possible.
 function eventHasAssignableCandidates(e){
   if(!e||!e.needs) return false;
-  const hasOpen = e.needs.some(n=>(n.slots||[]).filter(s=>s.uid).length < (n.qty||1));
-  const hasWaiting = e.needs.some(n=>(n.waiting||[]).length>0);
-  return hasOpen && hasWaiting;
+  return autoFillFromWaitlists(e.id, {commit:false}).length > 0;
 }
 
-/* Returns all waiting candidates across all needs of an event (flat list) */
-function getWaitingCandidates(e){
-  const result=[];
-  (e.needs||[]).forEach(n=>{
-    const act=activity(n.actId);
-    (n.waiting||[]).forEach(w=>{
-      const p=playerById(w.uid)||parentById(w.uid);
-      if(p) result.push({pid:w.uid, name:p.name, needId:n.id, actName:act?act.name:'?', waitSince:w.ts||0});
-    });
-  });
-  result.sort((a,b)=>a.waitSince-b.waitSince);
-  return result;
-}
-
-/* Returns needs with open slots */
-function getOpenNeeds(e){
-  return (e.needs||[]).filter(n=>{
-    const filled=(n.slots||[]).filter(s=>s.uid).length;
-    return filled < (n.qty||1);
-  }).map(n=>{
-    const act=activity(n.actId);
-    const filled=(n.slots||[]).filter(s=>s.uid).length;
-    return {needId:n.id, actName:act?act.name:'?', actId:n.actId, open:(n.qty||1)-filled};
-  });
-}
-
-/* Assign a waiting candidate to an open need */
-function assignCandidate(eid, pid, fromNeedId, toNeedId){
-  const e=eventById(eid); if(!e) return;
-  // Remove from waiting list of source need
-  const fromNeed=e.needs.find(n=>n.id===fromNeedId);
-  if(fromNeed) fromNeed.waiting=(fromNeed.waiting||[]).filter(w=>w.uid!==pid);
-  // Add to slots of target need (first open slot)
-  const toNeed=e.needs.find(n=>n.id===toNeedId);
-  if(!toNeed) return;
-  const slotIdx=(toNeed.slots||[]).findIndex(s=>!s.uid);
-  if(toNeed.slots && slotIdx>=0){
-    toNeed.slots[slotIdx].uid=pid;
-  } else {
-    if(!toNeed.slots) toNeed.slots=[];
-    toNeed.slots.push({uid:pid, ts:Date.now()});
+// Applique l'auto-remplissage automatiquement et notifie (utilisé aux points
+// clés : désistement, envoi des rappels du matin). Silencieux si rien à faire.
+function runAutoFill(eid, opts){
+  opts=opts||{};
+  const moves=autoFillFromWaitlists(eid, {commit:true});
+  if(moves.length){
+    const ev=eventById(eid);
+    LOG.event('Auto-remplissage des places libres',{event:eid, eventTitle:ev&&ev.title, déplacements:moves.length});
+    if(!opts.silent){
+      const msg = t('autoFillDone').replace('{n}', moves.length);
+      setTimeout(function(){ toast(msg,'ok'); }, 300);
+    }
   }
-  // Persist and re-render
-  saveEvents();
-  const act=activity(toNeed.actId);
-  const p=playerById(pid)||parentById(pid);
-  toast(t('assignedOk')(p?p.name:pid, act?act.name:'?'));
-  log(`assignCandidate: ${pid} → ${toNeedId} (from waiting on ${fromNeedId})`);
-  renderPage();
-  closeModal();
+  return moves;
 }
 
-/* Coach modal: reassign waiting candidates to open slots */
+/* Coach : aperçu puis application manuelle de l'auto-remplissage. */
 function openAssignCandidates(eid){
   const e=eventById(eid); if(!e) return;
-  const waiting=getWaitingCandidates(e);
-  const openNeeds=getOpenNeeds(e);
-
-  if(!waiting.length||!openNeeds.length){
-    toast(t('assignCandidatesEmpty')); return;
-  }
-
-  const openOpts=openNeeds.map(n=>`<option value="${n.needId}">${esc(n.actName)} (${n.open} ${t('openSlot')||'libre'})</option>`).join('');
-
-  const rows=waiting.map(w=>{
-    const isOwnNeed=openNeeds.find(n=>n.needId===w.needId);
+  const moves=autoFillFromWaitlists(eid, {commit:false});
+  if(!moves.length){ toast(t('assignCandidatesEmpty')); return; }
+  const rows=moves.map(function(m){
+    const u=userById(m.uid);
+    const fromNeed=e.needs.find(n=>n.id===m.from);
+    const toNeed=e.needs.find(n=>n.id===m.to);
     return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:10px 8px">
-        <strong>${esc(w.name)}</strong><br>
-        <small style="color:var(--muted)">${t('waitingFor')(esc(w.name),esc(w.actName)).split('—')[1].trim()}</small>
-      </td>
-      <td style="padding:10px 8px">
-        <div style="display:flex;gap:6px;align-items:center">
-          <select id="sel_${esc(w.pid)}" class="form-control" style="flex:1;font-size:13px">${openOpts}</select>
-          <button class="btn btn-primary btn-sm" onclick="assignCandidate('${eid}','${w.pid}','${w.needId}',document.getElementById('sel_${w.pid}').value)">${t('assignBtn')}</button>
-        </div>
-      </td>
+      <td style="padding:10px 8px"><strong>${esc(u?fullName(u):m.uid)}</strong></td>
+      <td style="padding:10px 8px;color:var(--muted);font-size:13px">${esc(actName(fromNeed)||'?')}</td>
+      <td style="padding:10px 8px;font-size:13px">→ <strong>${esc(actName(toNeed)||'?')}</strong></td>
     </tr>`;
   }).join('');
-
   const body=`
     <p style="color:var(--muted);font-size:14px;margin-bottom:12px">${t('assignCandidatesDesc')}</p>
     <table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:var(--surface2)">
         <th style="padding:8px;text-align:left;font-size:13px">${t('player')}</th>
+        <th style="padding:8px;text-align:left;font-size:13px">${t('waitingFor')||''}</th>
         <th style="padding:8px;text-align:left;font-size:13px">${t('assignTo')}</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
-
-  modal(t('assignCandidatesTitle'), body, [{label:t('close'),cls:'btn-ghost',fn:closeModal}]);
+  modal(t('assignCandidatesTitle'), body,
+    [{label:t('cancel'),cls:'btn-ghost',fn:closeModal},
+     {label:t('autoFillApply'),cls:'btn-primary',fn:function(){ applyAutoFill(eid); }}]);
+}
+// Applique réellement puis ferme le modal et re-rend.
+function applyAutoFill(eid){
+  const moves=runAutoFill(eid, {silent:false});
+  closeModal();
+  render();
+  if(!moves.length) toast(t('assignCandidatesEmpty'));
 }
 
 // Modale coach : aperçu des rappels d'un événement + envoi simulé + note d'intégration.
@@ -1346,12 +1368,12 @@ function render(){
       let route=state.view;
       if(route==='logs' && !isDev()) route='events';  // Journal réservé au mode dév
       ({ events:renderCoachEvents, activities:renderCoachActivities, tracking:renderTracking,
-         members:renderMembers, settings:renderSettings, logs:renderLogs }[route] || renderCoachEvents)(c);
+         members:renderMembers, settings:renderSettings, logs:renderLogs, help:renderHelp }[route] || renderCoachEvents)(c);
     } else if(u.role==='parent'){
-      ({ dash:renderParentDash, calendar:renderPlayerCalendar, myhours:renderPlayerHours }[state.view]
+      ({ dash:renderParentDash, calendar:renderPlayerCalendar, myhours:renderPlayerHours, help:renderHelp }[state.view]
          || renderParentDash)(c);
     } else {
-      ({ dash:renderPlayerDash, calendar:renderPlayerCalendar, myhours:renderPlayerHours }[state.view]
+      ({ dash:renderPlayerDash, calendar:renderPlayerCalendar, myhours:renderPlayerHours, help:renderHelp }[state.view]
          || renderPlayerDash)(c);
     }
     renderConsole();
@@ -1433,17 +1455,21 @@ function renderSidebar(u){
   ].concat(isDev()?[['logs','🧾',t('navLogs')]]:[]) : u.role==='parent' ? [
     ['dash','🏠',t('navDash')],
     ['calendar','📅',t('navCalendar')],
-    ['myhours','⏱️',t('myVolunteering')]
+    ['myhours','⏱️',t('myVolunteering')],
+    ['help','❓',t('navHelp')]
   ] : [
     ['dash','🏠',t('navDash')],
     ['calendar','📅',t('navCalendar')],
-    ['myhours','⏱️',t('navMyHours')]
+    ['myhours','⏱️',t('navMyHours')],
+    ['help','❓',t('navHelp')]
   ];
   sb.innerHTML = items.map(([v,ic,label])=>
     `<button class="nav-item ${state.view===v?'active':''}" onclick="go('${v}')">
        <span class="ico">${ic}</span><span class="txt">${esc(label)}</span></button>`).join('')
   + (u.role==='coach'?
-    `<button class="nav-item nav-feedback" onclick="openFeedbackModal()" style="margin-top:auto;opacity:.75">
+    `<button class="nav-item ${state.view==='help'?'active':''}" onclick="go('help')" style="margin-top:auto">
+       <span class="ico">❓</span><span class="txt">${esc(t('navHelp'))}</span></button>
+     <button class="nav-item nav-feedback" onclick="openFeedbackModal()" style="opacity:.75">
        <span class="ico">💬</span><span class="txt">${esc(t('feedbackBtn').replace('💬 ',''))}</span></button>`:'');
 }
 function go(v){ const from=state.view; state.view=v; try{ sessionStorage.setItem('bfc_view', v); }catch(e){} LOG.nav(v,{from:from}); render(); window.scrollTo(0,0); }
@@ -1716,6 +1742,9 @@ function withdraw(regId){
     const promoted=nowAssigned[need.qty-1];
     if(promoted){ const p=userById(promoted.pid); LOG.event('Promotion automatique depuis la liste d\'attente',{promoted:p.id, promotedName:(p.first+' '+(p.last||'')).trim(), event:reg.eid, activity:actName(need)}); setTimeout(()=>toast(`${initials(p)} ${t('promoted')}`,'ok'),400); }
   }
+  // Auto-remplissage : si des places restent libres sur d'autres postes,
+  // on y déplace les candidats encore en attente (1er arrivé, 1er servi).
+  runAutoFill(reg.eid, {silent:false});
   render();
 }
 
@@ -2546,8 +2575,8 @@ function renderSettings(c){
 
     <div class="card" style="max-width:640px;margin-top:18px">
       <div style="font-weight:700;font-size:15px;margin-bottom:12px">💬 ${t('feedbackListTitle')}
-        <span style="font-size:12px;font-weight:400;color:#888;margin-left:8px">(${(DB.feedbacks||[]).length})</span></div>
-      ${(DB.feedbacks||[]).length===0
+        <span style="font-size:12px;font-weight:400;color:#888;margin-left:8px">(${getFeedbacks().length})</span></div>
+      ${getFeedbacks().length===0
         ? `<p style="color:#888;font-size:13px">${t('feedbackEmpty')}</p>`
         : `<div style="overflow-x:auto">
            <table class="data-table" style="width:100%;font-size:12px">
@@ -2559,7 +2588,7 @@ function renderSettings(c){
                <th>${t('feedbackColUser')}</th>
                <th>${t('feedbackColDate')}</th>
              </tr></thead>
-             <tbody>${(DB.feedbacks||[]).slice().reverse().map(f=>`<tr>
+             <tbody>${getFeedbacks().slice().reverse().map(f=>`<tr>
                <td>${esc(f.type)}</td>
                <td><span style="padding:2px 7px;border-radius:12px;font-size:11px;background:${f.priority==='high'?'#fce4e4':f.priority==='low'?'#e8f4e8':'#eef2ff'};color:${f.priority==='high'?'#c00':'#444'}">${esc(f.priority)}</span></td>
                <td style="font-weight:600">${esc(f.title)}</td>
@@ -2569,7 +2598,7 @@ function renderSettings(c){
              </tr>`).join('')}</tbody>
            </table></div>`}
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
-        ${(DB.feedbacks||[]).length>0?`
+        ${getFeedbacks().length>0?`
           <button class="btn btn-ghost btn-sm" onclick="exportFeedbackCSV()">📄 ${t('feedbackExportCSV')}</button>
           <button class="btn btn-danger btn-sm" onclick="deleteAllFeedbacks()">${t('feedbackDeleteAll')}</button>`:''}
       </div>
@@ -2653,9 +2682,9 @@ function openFeedbackModal(){
     <div style="display:grid;gap:10px">
       <label style="font-size:13px;font-weight:600">${t('feedbackType')}
         <div style="display:flex;gap:6px;margin-top:4px">
-          <button id="fb_bug"  class="btn btn-sm btn-ghost" onclick="fbType('bug')">${t('feedbackBug')}</button>
-          <button id="fb_imp"  class="btn btn-sm btn-ghost" onclick="fbType('improvement')">${t('feedbackImprove')}</button>
-          <button id="fb_q"    class="btn btn-sm btn-ghost" onclick="fbType('question')">${t('feedbackQuestion')}</button>
+          <button type="button" id="fb_bug"  class="btn btn-sm btn-ghost" onclick="fbType('bug')">${t('feedbackBug')}</button>
+          <button type="button" id="fb_imp"  class="btn btn-sm btn-ghost" onclick="fbType('improvement')">${t('feedbackImprove')}</button>
+          <button type="button" id="fb_q"    class="btn btn-sm btn-ghost" onclick="fbType('question')">${t('feedbackQuestion')}</button>
         </div>
         <input type="hidden" id="fb_type" value="bug">
       </label>
@@ -2699,16 +2728,18 @@ function submitFeedback(){
     user:  u ? u.name : '?',
     at:    new Date().toISOString()
   };
-  DB.feedbacks.push(entry);
-  saveDB();
+  const list = getFeedbacks();
+  list.push(entry);
+  saveFeedbacks(list);
   LOG.event('Retour envoyé', {type:entry.type, priority:entry.priority});
   closeModal();
   toast(t('feedbackSent'),'ok');
+  if(state.view==='settings') render();
 }
 function exportFeedbackCSV(){
   const cols=['feedbackColType','feedbackColTitle','feedbackColDesc','feedbackColPriority','feedbackColUser','feedbackColDate'];
   const header=cols.map(k=>t(k)).join(',');
-  const rows=(DB.feedbacks||[]).map(f=>[
+  const rows=getFeedbacks().map(f=>[
     f.type, f.title, f.desc||'', f.priority, f.user, f.at
   ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
   const csv=[header,...rows].join('\n');
@@ -2718,7 +2749,7 @@ function exportFeedbackCSV(){
 }
 function deleteAllFeedbacks(){
   confirmModal(t('feedbackDeleteAllConfirm'), ()=>{
-    DB.feedbacks=[]; saveDB();
+    saveFeedbacks([]);
     LOG.event('Retours effacés',{});
     closeModal(); render();
   });
@@ -2737,6 +2768,7 @@ function modal(title, bodyHTML, buttons){
     </div></div>`;
   const foot=document.getElementById('modalFoot');
   (buttons||[]).forEach((b,i)=>{ const btn=document.createElement('button');
+    btn.type='button';
     btn.className='btn '+(b.cls||'btn-ghost'); btn.textContent=b.label;
     btn.onclick=b.fn; foot.appendChild(btn); });
 }
