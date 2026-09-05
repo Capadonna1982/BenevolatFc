@@ -316,14 +316,22 @@ tr:hover td{background:var(--surface2)}
   .nav-item.active{background:var(--brand-light);color:var(--brand-dark)}
   /* Contenu : plein écran au dessus de la bottom bar */
   .content{
-    padding:14px 12px 80px;  /* padding-bottom > hauteur bottom bar */
+    padding:12px 12px 80px;  /* padding-bottom > hauteur bottom bar */
     min-width:0;width:100%;max-width:100%;overflow-x:hidden;
   }
+  /* Garde-fou universel : aucun enfant ne peut dépasser l'écran */
+  .content, .content *{max-width:100%}
+  .card{max-width:100%;overflow:hidden}
   /* Grilles : une seule colonne sur mobile */
   .grid-3,.grid-2,.row-2{grid-template-columns:1fr}
-  /* Cards : moins de padding sur petit écran */
-  .card{padding:14px}
-  .page-head h2{font-size:19px}
+  /* Cards : plus compactes sur petit écran */
+  .card{padding:14px;margin-bottom:12px}
+  .page-head h2{font-size:18px}
+  /* Titres et grands chiffres : réduits pour tenir */
+  .stat .big, .stat-big, .big-number{font-size:30px}
+  .card h3, .card-title{font-size:15px}
+  .prog-bar, .prog-track, .progress{max-width:100%}
+  .prog-legend{font-size:11px;gap:8px;flex-wrap:wrap;max-width:100%}
   /* Topbar : compacter sur mobile */
   .topbar{padding:0 10px;height:52px;max-width:100%;gap:8px}
   .topbar .brand-name{font-size:15px}
