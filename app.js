@@ -191,7 +191,25 @@ const I18N = {
     noOpenSpots:"Aucun poste avec places disponibles.",
     noWaitingCandidates:"Aucun candidat en attente.",
     assignedOk:(name,spot)=>`${name} affecté(e) au poste « ${spot} »`,
-    assignCandidatesNone:"Aucun candidat en attente ni place disponible pour le moment."
+    assignCandidatesNone:"Aucun candidat en attente ni place disponible pour le moment.",
+    // feedback
+    feedbackBtn:"💬 Retours",
+    feedbackModalTitle:"Envoyer un retour",
+    feedbackModalDesc:"Signalez un bug ou proposez une amélioration. Vos retours aident à améliorer l'application.",
+    feedbackType:"Type", feedbackTitle:"Titre", feedbackDesc:"Description",
+    feedbackPriority:"Priorité",
+    feedbackBug:"🐛 Bug", feedbackImprove:"💡 Amélioration", feedbackQuestion:"❓ Question",
+    feedbackPrioHigh:"Haute", feedbackPrioMed:"Normale", feedbackPrioLow:"Basse",
+    feedbackSend:"Envoyer",
+    feedbackSent:"Merci ! Votre retour a été enregistré.",
+    feedbackErrTitle:"Le titre est requis.",
+    feedbackListTitle:"Retours reçus",
+    feedbackEmpty:"Aucun retour pour le moment.",
+    feedbackExportCSV:"Exporter CSV",
+    feedbackFrom:"De", feedbackAt:"Le",
+    feedbackColType:"Type", feedbackColTitle:"Titre", feedbackColDesc:"Description",
+    feedbackColPriority:"Priorité", feedbackColUser:"Utilisateur", feedbackColDate:"Date",
+    feedbackDeleteAll:"Tout effacer", feedbackDeleteAllConfirm:"Effacer tous les retours ?"
   },
   en:{
     appName:"Volunteer FC", appTagline:"Team volunteer hours management", loading:"Loading…",
@@ -360,7 +378,25 @@ const I18N = {
     noWaitingCandidates:"No waiting candidates for this event.",
     noOpenSlots:"No open slots available.",
     assignedOk:(name,act)=>`${name} assigned to ${act}`,
-    assignCandidatesEmpty:"No candidates can be reassigned right now."
+    assignCandidatesEmpty:"No candidates can be reassigned right now.",
+    // feedback
+    feedbackBtn:"💬 Feedback",
+    feedbackModalTitle:"Send feedback",
+    feedbackModalDesc:"Report a bug or suggest an improvement. Your feedback helps improve the app.",
+    feedbackType:"Type", feedbackTitle:"Title", feedbackDesc:"Description",
+    feedbackPriority:"Priority",
+    feedbackBug:"🐛 Bug", feedbackImprove:"💡 Improvement", feedbackQuestion:"❓ Question",
+    feedbackPrioHigh:"High", feedbackPrioMed:"Normal", feedbackPrioLow:"Low",
+    feedbackSend:"Send",
+    feedbackSent:"Thank you! Your feedback has been recorded.",
+    feedbackErrTitle:"Title is required.",
+    feedbackListTitle:"Received feedback",
+    feedbackEmpty:"No feedback yet.",
+    feedbackExportCSV:"Export CSV",
+    feedbackFrom:"From", feedbackAt:"At",
+    feedbackColType:"Type", feedbackColTitle:"Title", feedbackColDesc:"Description",
+    feedbackColPriority:"Priority", feedbackColUser:"User", feedbackColDate:"Date",
+    feedbackDeleteAll:"Clear all", feedbackDeleteAllConfirm:"Clear all feedback?"
   }
 };
 let lang = localStorage.getItem('bfc_lang') || 'fr';
@@ -390,7 +426,7 @@ function saveDB(){
 }
 function loadDB(){
   const raw = localStorage.getItem(DB_KEY);
-  if(raw){ try{ DB = JSON.parse(raw); if(!Array.isArray(DB.outbox)) DB.outbox=[]; return; }catch(e){} }
+  if(raw){ try{ DB = JSON.parse(raw); if(!Array.isArray(DB.outbox)) DB.outbox=[]; if(!Array.isArray(DB.feedbacks)) DB.feedbacks=[]; return; }catch(e){} }
   DB = seedDB();
   saveDB();
 }
@@ -729,7 +765,7 @@ function seedDB(){
   const regsClean = regs.filter(r=>r.id!=='r9');
   return {
     settings:{ hoursGoal:15, creditMode:'approval', withdrawHours:48, logo:null, seasonName:'' },
-    users, activities, events, regs:regsClean, outbox:[]
+    users, activities, events, regs:regsClean, outbox:[], feedbacks:[]
   };
 }
 
@@ -1405,7 +1441,10 @@ function renderSidebar(u){
   ];
   sb.innerHTML = items.map(([v,ic,label])=>
     `<button class="nav-item ${state.view===v?'active':''}" onclick="go('${v}')">
-       <span class="ico">${ic}</span><span class="txt">${esc(label)}</span></button>`).join('');
+       <span class="ico">${ic}</span><span class="txt">${esc(label)}</span></button>`).join('')
+  + (u.role==='coach'?
+    `<button class="nav-item nav-feedback" onclick="openFeedbackModal()" style="margin-top:auto;opacity:.75">
+       <span class="ico">💬</span><span class="txt">${esc(t('feedbackBtn').replace('💬 ',''))}</span></button>`:'');
 }
 function go(v){ const from=state.view; state.view=v; try{ sessionStorage.setItem('bfc_view', v); }catch(e){} LOG.nav(v,{from:from}); render(); window.scrollTo(0,0); }
 
@@ -2503,6 +2542,37 @@ function renderSettings(c){
       <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:var(--danger,#e5484d)">⚠️ ${t('seasonZone')}</div>
       <p class="need-note" style="margin:0 0 14px">${t('seasonZoneDesc')}</p>
       <button class="btn btn-danger" onclick="openNewSeasonModal()">${t('seasonNewBtn')||t('seasonModalTitle')}</button>
+    </div>
+
+    <div class="card" style="max-width:640px;margin-top:18px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:12px">💬 ${t('feedbackListTitle')}
+        <span style="font-size:12px;font-weight:400;color:#888;margin-left:8px">(${(DB.feedbacks||[]).length})</span></div>
+      ${(DB.feedbacks||[]).length===0
+        ? `<p style="color:#888;font-size:13px">${t('feedbackEmpty')}</p>`
+        : `<div style="overflow-x:auto">
+           <table class="data-table" style="width:100%;font-size:12px">
+             <thead><tr>
+               <th>${t('feedbackColType')}</th>
+               <th>${t('feedbackColPriority')}</th>
+               <th>${t('feedbackColTitle')}</th>
+               <th>${t('feedbackColDesc')}</th>
+               <th>${t('feedbackColUser')}</th>
+               <th>${t('feedbackColDate')}</th>
+             </tr></thead>
+             <tbody>${(DB.feedbacks||[]).slice().reverse().map(f=>`<tr>
+               <td>${esc(f.type)}</td>
+               <td><span style="padding:2px 7px;border-radius:12px;font-size:11px;background:${f.priority==='high'?'#fce4e4':f.priority==='low'?'#e8f4e8':'#eef2ff'};color:${f.priority==='high'?'#c00':'#444'}">${esc(f.priority)}</span></td>
+               <td style="font-weight:600">${esc(f.title)}</td>
+               <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.desc||'')}</td>
+               <td>${esc(f.user)}</td>
+               <td style="white-space:nowrap">${f.at?new Date(f.at).toLocaleDateString():''}</td>
+             </tr>`).join('')}</tbody>
+           </table></div>`}
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        ${(DB.feedbacks||[]).length>0?`
+          <button class="btn btn-ghost btn-sm" onclick="exportFeedbackCSV()">📄 ${t('feedbackExportCSV')}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAllFeedbacks()">${t('feedbackDeleteAll')}</button>`:''}
+      </div>
     </div>`;
 }
 function setCredit(mode){ DB.settings.creditMode=mode; saveDB(); render(); }
@@ -2571,6 +2641,87 @@ function startNewSeason(){
   closeModal();
   toast(t('seasonDone').replace('{n}',nEvents).replace('{r}',nRegs),'ok');
   go('events');
+}
+
+/* =====================================================================
+   FEEDBACK (coach → admin)
+   ===================================================================== */
+function openFeedbackModal(){
+  const u=currentUser();
+  modal(t('feedbackModalTitle'),`
+    <p style="font-size:13px;color:#666;margin-bottom:12px">${t('feedbackModalDesc')}</p>
+    <div style="display:grid;gap:10px">
+      <label style="font-size:13px;font-weight:600">${t('feedbackType')}
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button id="fb_bug"  class="btn btn-sm btn-ghost" onclick="fbType('bug')">${t('feedbackBug')}</button>
+          <button id="fb_imp"  class="btn btn-sm btn-ghost" onclick="fbType('improvement')">${t('feedbackImprove')}</button>
+          <button id="fb_q"    class="btn btn-sm btn-ghost" onclick="fbType('question')">${t('feedbackQuestion')}</button>
+        </div>
+        <input type="hidden" id="fb_type" value="bug">
+      </label>
+      <label style="font-size:13px;font-weight:600">${t('feedbackTitle')}
+        <input id="fb_title" class="input" style="margin-top:4px;width:100%" placeholder="${t('feedbackTitle')}…" maxlength="120">
+      </label>
+      <label style="font-size:13px;font-weight:600">${t('feedbackDesc')}
+        <textarea id="fb_desc" class="input" style="margin-top:4px;width:100%;min-height:80px;resize:vertical" placeholder="Détails optionnels…"></textarea>
+      </label>
+      <label style="font-size:13px;font-weight:600">${t('feedbackPriority')}
+        <select id="fb_prio" class="input" style="margin-top:4px">
+          <option value="high">${t('feedbackPrioHigh')}</option>
+          <option value="normal" selected>${t('feedbackPrioMed')}</option>
+          <option value="low">${t('feedbackPrioLow')}</option>
+        </select>
+      </label>
+    </div>`,
+    [{label:t('cancel'),cls:'btn-ghost',fn:closeModal},
+     {label:t('feedbackSend'),cls:'btn-primary',fn:submitFeedback}]);
+  // Highlight the selected type button
+  setTimeout(()=>fbType('bug'),0);
+}
+function fbType(type){
+  const inp=document.getElementById('fb_type'); if(inp) inp.value=type;
+  ['bug','improvement','question'].forEach(k=>{
+    const map={bug:'fb_bug',improvement:'fb_imp',question:'fb_q'};
+    const btn=document.getElementById(map[k]);
+    if(btn) btn.classList.toggle('btn-primary', k===type), btn.classList.toggle('btn-ghost', k!==type);
+  });
+}
+function submitFeedback(){
+  const title=(document.getElementById('fb_title')||{}).value||'';
+  if(!title.trim()){toast(t('feedbackErrTitle'),'err'); return;}
+  const u=currentUser();
+  const entry={
+    id: uid('fb_'),
+    type:  (document.getElementById('fb_type')||{}).value||'bug',
+    title: title.trim(),
+    desc:  ((document.getElementById('fb_desc')||{}).value||'').trim(),
+    priority:(document.getElementById('fb_prio')||{}).value||'normal',
+    user:  u ? u.name : '?',
+    at:    new Date().toISOString()
+  };
+  DB.feedbacks.push(entry);
+  saveDB();
+  LOG.event('Retour envoyé', {type:entry.type, priority:entry.priority});
+  closeModal();
+  toast(t('feedbackSent'),'ok');
+}
+function exportFeedbackCSV(){
+  const cols=['feedbackColType','feedbackColTitle','feedbackColDesc','feedbackColPriority','feedbackColUser','feedbackColDate'];
+  const header=cols.map(k=>t(k)).join(',');
+  const rows=(DB.feedbacks||[]).map(f=>[
+    f.type, f.title, f.desc||'', f.priority, f.user, f.at
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const csv=[header,...rows].join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+ encodeURIComponent(csv);
+  a.download='retours.csv'; a.click();
+}
+function deleteAllFeedbacks(){
+  confirmModal(t('feedbackDeleteAllConfirm'), ()=>{
+    DB.feedbacks=[]; saveDB();
+    LOG.event('Retours effacés',{});
+    closeModal(); render();
+  });
 }
 
 /* =====================================================================
