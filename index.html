@@ -325,8 +325,13 @@ tr:hover td{background:var(--surface2)}
   .card{padding:14px}
   .page-head h2{font-size:19px}
   /* Topbar : compacter sur mobile */
-  .topbar{padding:0 12px;height:52px}
+  .topbar{padding:0 12px;height:52px;max-width:100%;overflow:hidden}
   .topbar .brand-name{font-size:15px}
+  /* Masquer le nom complet — la pastille d'initiales suffit */
+  #myName{display:none}
+  /* Bouton Déconnexion → icône compacte */
+  #logoutBtn{font-size:0;padding:8px;width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center}
+  #logoutBtn::before{content:"⏻";font-size:18px}
   /* Modals : plein écran sur mobile */
   .modal-box{width:calc(100vw - 24px);max-height:90vh;margin:12px}
   /* Tables : scroll horizontal */
@@ -479,7 +484,7 @@ tr:hover td{background:var(--surface2)}
       <div class="avatar" id="myAvatar"></div>
       <span id="myName"></span>
     </div>
-    <button class="icon-btn" onclick="logout()" data-i18n="logout">Déconnexion</button>
+    <button class="icon-btn" id="logoutBtn" onclick="logout()" data-i18n="logout">Déconnexion</button>
   </div>
   <div class="layout">
     <div class="sidebar" id="sidebar"></div>
