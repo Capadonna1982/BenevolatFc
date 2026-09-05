@@ -19,8 +19,8 @@
   --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;max-width:100%;overflow-x:hidden}
-body{font-family:var(--font);background:var(--surface2);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;width:100%;position:relative}
+html{height:100%;max-width:100%;overflow-x:hidden}
+body{height:100%;font-family:var(--font);background:var(--surface2);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;width:100%;position:relative}
 button{font-family:inherit;cursor:pointer;border:none;background:none}
 input,select{font-family:inherit;font-size:14px}
 a{color:var(--brand);text-decoration:none}
@@ -325,7 +325,7 @@ tr:hover td{background:var(--surface2)}
   .card{padding:14px}
   .page-head h2{font-size:19px}
   /* Topbar : compacter sur mobile */
-  .topbar{padding:0 12px;height:52px;max-width:100%;overflow:hidden}
+  .topbar{padding:0 10px;height:52px;max-width:100%;gap:8px}
   .topbar .brand-name{font-size:15px}
   /* Masquer le nom complet — la pastille d'initiales suffit */
   #myName{display:none}
