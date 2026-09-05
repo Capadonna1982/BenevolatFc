@@ -19,8 +19,8 @@
   --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
-body{font-family:var(--font);background:var(--surface2);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+html,body{height:100%;max-width:100%;overflow-x:hidden}
+body{font-family:var(--font);background:var(--surface2);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;width:100%;position:relative}
 button{font-family:inherit;cursor:pointer;border:none;background:none}
 input,select{font-family:inherit;font-size:14px}
 a{color:var(--brand);text-decoration:none}
@@ -317,7 +317,7 @@ tr:hover td{background:var(--surface2)}
   /* Contenu : plein écran au dessus de la bottom bar */
   .content{
     padding:14px 12px 80px;  /* padding-bottom > hauteur bottom bar */
-    min-width:0;
+    min-width:0;width:100%;max-width:100%;overflow-x:hidden;
   }
   /* Grilles : une seule colonne sur mobile */
   .grid-3,.grid-2,.row-2{grid-template-columns:1fr}
