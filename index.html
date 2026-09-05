@@ -25,6 +25,13 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 input,select{font-family:inherit;font-size:14px}
 a{color:var(--brand);text-decoration:none}
 .hidden{display:none!important}
+/* Anti-clignotement au refresh : pendant le boot, on masque auth ET app, on montre un splash. */
+body.booting #authScreen,body.booting #app{display:none!important}
+#bootSplash{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:var(--surface2)}
+body.booting #bootSplash{display:flex}
+#bootSplash .ball{width:44px;height:44px;animation:bootspin 1s linear infinite}
+#bootSplash .boot-txt{color:#64748b;font-size:14px;font-weight:600}
+@keyframes bootspin{to{transform:rotate(360deg)}}
 
 /* ---------- Auth screen ---------- */
 #authScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -352,7 +359,13 @@ tr:hover td{background:var(--surface2)}
 .tablewrap{overflow:auto;max-height:60vh}
 </style>
 </head>
-<body>
+<body class="booting">
+
+<!-- Splash de démarrage : visible tant que <body> a la classe .booting (évite le flash de l'écran de connexion au refresh). -->
+<div id="bootSplash">
+  <div class="ball"></div>
+  <div class="boot-txt" data-i18n="loading">Chargement…</div>
+</div>
 
 <!-- ============ AUTH SCREEN ============ -->
 <div id="authScreen">
