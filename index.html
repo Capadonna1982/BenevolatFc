@@ -19,7 +19,7 @@
   --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{height:100%;max-width:100%;overflow-x:hidden}
+html{height:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{height:100%;font-family:var(--font);background:var(--surface2);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;width:100%;position:relative}
 button{font-family:inherit;cursor:pointer;border:none;background:none}
 input,select{font-family:inherit;font-size:14px}
@@ -319,19 +319,11 @@ tr:hover td{background:var(--surface2)}
     padding:12px 12px 80px;  /* padding-bottom > hauteur bottom bar */
     min-width:0;width:100%;max-width:100%;overflow-x:hidden;
   }
-  /* Garde-fou universel : aucun enfant ne peut dépasser l'écran */
-  .content, .content *{max-width:100%}
-  .card{max-width:100%;overflow:hidden}
   /* Grilles : une seule colonne sur mobile */
   .grid-3,.grid-2,.row-2{grid-template-columns:1fr}
   /* Cards : plus compactes sur petit écran */
-  .card{padding:14px;margin-bottom:12px}
+  .card{padding:16px;margin-bottom:12px}
   .page-head h2{font-size:18px}
-  /* Titres et grands chiffres : réduits pour tenir */
-  .stat .big, .stat-big, .big-number{font-size:30px}
-  .card h3, .card-title{font-size:15px}
-  .prog-bar, .prog-track, .progress{max-width:100%}
-  .prog-legend{font-size:11px;gap:8px;flex-wrap:wrap;max-width:100%}
   /* Topbar : compacter sur mobile */
   .topbar{padding:0 10px;height:52px;max-width:100%;gap:8px}
   .topbar .brand-name{font-size:15px}
