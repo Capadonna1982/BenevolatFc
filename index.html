@@ -503,43 +503,5 @@ tr:hover td{background:var(--surface2)}
 <script src="supabase/config.js"></script>
 <script src="supabase/data.js"></script>
 <script src="app.js"></script>
-<script>
-/* Diagnostic de débordement horizontal — activer avec ?diag=1 dans l'URL.
-   Affiche en direct, sur l'appareil, quels éléments dépassent la largeur de l'écran. */
-(function(){
-  if(!/[?&]diag=1/.test(location.search)) return;
-  function runDiag(){
-    var vw = document.documentElement.clientWidth;
-    var results = [];
-    document.querySelectorAll('body *').forEach(function(el){
-      var r = el.getBoundingClientRect();
-      if(r.width < 1 && r.height < 1) return;
-      if(r.right > vw + 1 || r.left < -1){
-        var cs = getComputedStyle(el);
-        results.push({
-          sel: el.tagName.toLowerCase() + (el.id?('#'+el.id):'') + (typeof el.className==='string'&&el.className?('.'+el.className.trim().split(/\s+/).join('.')):''),
-          left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width),
-          minW: cs.minWidth, pos: cs.position, ws: cs.whiteSpace
-        });
-      }
-    });
-    results.sort(function(a,b){ return b.right - a.right; });
-    var box = document.getElementById('diagBox') || (function(){
-      var b = document.createElement('div'); b.id='diagBox';
-      b.style.cssText='position:fixed;left:0;right:0;bottom:0;max-height:55vh;overflow:auto;z-index:999999;background:#0b1220;color:#7CFC94;font:12px/1.4 monospace;padding:10px 12px;border-top:3px solid #7CFC94;white-space:pre-wrap;word-break:break-word';
-      document.body.appendChild(b); return b;
-    })();
-    var head = 'DIAG — viewport='+vw+'px  | htmlScrollW='+document.documentElement.scrollWidth+' bodyScrollW='+document.body.scrollWidth+'\n'+
-               (results.length? results.length+' élément(s) débordent :\n' : '✅ AUCUN débordement détecté\n');
-    var lines = results.slice(0,10).map(function(x){
-      return '• '+x.sel.slice(0,60)+'\n   left='+x.left+' right='+x.right+' w='+x.w+' minW='+x.minW+' pos='+x.pos+' ws='+x.ws;
-    }).join('\n');
-    box.textContent = head + lines;
-  }
-  var t = setInterval(function(){ if(document.getElementById('app') && !document.getElementById('app').classList.contains('hidden')){ clearInterval(t); setTimeout(runDiag, 600); } }, 400);
-  setTimeout(runDiag, 2500);
-  window.__runDiag = runDiag;
-})();
-</script>
 </body>
 </html>
